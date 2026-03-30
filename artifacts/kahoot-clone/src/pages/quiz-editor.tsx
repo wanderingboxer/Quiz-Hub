@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute, Link } from "wouter";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useGetQuiz, useUpdateQuiz, useAddQuestion, useUpdateQuestion, useDeleteQuestion } from "@workspace/api-client-react";
@@ -53,7 +53,6 @@ export default function QuizEditor() {
   const updateQuestion = useUpdateQuestion({
     mutation: {
       onSuccess: () => {
-        toast({ title: "Question saved" });
         queryClient.invalidateQueries({ queryKey: getGetQuizQueryKey(quizId) });
       }
     }
@@ -88,31 +87,106 @@ export default function QuizEditor() {
       points: 1000
     }
   });
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedSnapshotRef = useRef("");
+  const watchedQuestion = form.watch();
+  const isDirty = form.formState.isDirty;
+
+  const normalizeQuestionValues = (data: QuestionFormValues): QuestionFormValues => ({
+    ...data,
+    text: data.text.trim(),
+    options: data.options.map((option) => option.trim()),
+  });
+
+  const saveQuestion = (data: QuestionFormValues, showToast = false) => {
+    if (!selectedQuestion) return;
+
+    const normalized = normalizeQuestionValues(data);
+
+    updateQuestion.mutate(
+      { id: selectedQuestion.id, data: normalized },
+      {
+        onSuccess: () => {
+          if (showToast) {
+            toast({ title: "Question saved" });
+          }
+          queryClient.invalidateQueries({ queryKey: getGetQuizQueryKey(quizId) });
+        },
+        onError: (err: any) => {
+          toast({
+            title: "Failed to save question",
+            description: err?.message ?? "Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  };
 
   // Reset form when selected question changes
   useEffect(() => {
     if (selectedQuestion) {
-      form.reset({
+      const resetValues = {
         text: selectedQuestion.text,
         options: selectedQuestion.options.length === 4 ? selectedQuestion.options : ["", "", "", ""],
         correctOption: selectedQuestion.correctOption,
         timeLimit: selectedQuestion.timeLimit,
         points: selectedQuestion.points
-      });
+      };
+      form.reset(resetValues);
+      lastSavedSnapshotRef.current = JSON.stringify(normalizeQuestionValues(resetValues));
     } else {
-      form.reset({
+      const resetValues = {
         text: "",
         options: ["", "", "", ""],
         correctOption: 0,
         timeLimit: 20,
         points: 1000
-      });
+      };
+      form.reset(resetValues);
+      lastSavedSnapshotRef.current = "";
     }
   }, [selectedQuestion, form]);
 
+  useEffect(() => {
+    if (!selectedQuestion || !isDirty || updateQuestion.isPending) {
+      return;
+    }
+
+    const normalized = normalizeQuestionValues(watchedQuestion);
+    const hasQuestionText = normalized.text.length > 0;
+    const hasAllOptions = normalized.options.length === 4 && normalized.options.every((option) => option.length > 0);
+
+    if (!hasQuestionText || !hasAllOptions) {
+      return;
+    }
+
+    const snapshot = JSON.stringify(normalized);
+    if (snapshot === lastSavedSnapshotRef.current) {
+      return;
+    }
+
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      lastSavedSnapshotRef.current = snapshot;
+      saveQuestion(normalized, false);
+    }, 700);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [selectedQuestion, watchedQuestion, isDirty, updateQuestion.isPending]);
+
   const onSubmit = (data: QuestionFormValues) => {
     if (selectedQuestion) {
-      updateQuestion.mutate({ id: selectedQuestion.id, data });
+      const normalized = normalizeQuestionValues(data);
+      lastSavedSnapshotRef.current = JSON.stringify(normalized);
+      saveQuestion(normalized, true);
     }
   };
 

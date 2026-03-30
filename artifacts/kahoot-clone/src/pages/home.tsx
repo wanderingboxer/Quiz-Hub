@@ -34,7 +34,7 @@ export default function Home() {
           className="order-2 lg:order-1"
         >
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 px-4 py-2 text-sm font-bold text-primary">
-            <Sparkles size={16} /> GoComet Learning Experience
+            <Sparkles size={16} /> GoComet Townhall
           </div>
 
           <h1 className="mt-5 text-5xl font-display font-black leading-tight text-foreground sm:text-6xl lg:text-7xl">
@@ -45,7 +45,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-5 max-w-2xl text-lg text-muted-foreground sm:text-xl">
-            A cleaner, enterprise-style space for onboarding, training, live knowledge checks, and Q&amp;A — designed to feel aligned with the GoComet brand.
+            A space for onboarding, training, live knowledge checks, and Q&amp;A — designed to feel aligned with the GoComet brand.
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -81,7 +81,7 @@ export default function Home() {
             <div className="mb-6">
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Join a live session</p>
               <h2 className="mt-2 text-3xl font-display font-black text-foreground">Enter your game PIN</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Use the PIN shared by the host to enter the GoComet-styled quiz room.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Use the PIN shared by the host to enter the GoComet quiz room.</p>
             </div>
 
             <form onSubmit={handleJoin} className="space-y-4">

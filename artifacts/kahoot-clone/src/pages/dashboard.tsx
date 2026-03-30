@@ -62,7 +62,7 @@ export default function Dashboard() {
               <LayoutDashboard className="text-white" size={20} />
             </div>
             <div>
-              <span className="block text-2xl font-display font-black text-foreground">GoComet Quiz Hub</span>
+              <span className="block text-2xl font-display font-black text-foreground">GoComet Townhall</span>
               <span className="block text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Host console</span>
             </div>
           </Link>
@@ -78,8 +78,7 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
         <div className="rounded-[28px] brand-gradient text-white p-6 sm:p-8 shadow-[0_24px_60px_rgba(12,33,76,0.18)] mb-8">
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/70">GoComet learning operations</p>
-          <h1 className="mt-2 text-4xl sm:text-5xl font-display font-black">Manage quizzes and live sessions</h1>
+          <h1 className="text-4xl sm:text-5xl font-display font-black">Manage quizzes and live sessions</h1>
           <p className="mt-3 max-w-2xl text-white/80 text-sm sm:text-base">
             Create branded knowledge checks, launch live sessions, and keep team engagement aligned with the GoComet product experience.
           </p>
@@ -98,7 +97,7 @@ export default function Dashboard() {
               <Settings className="text-muted-foreground" size={40} />
             </div>
             <h2 className="text-2xl font-display font-bold text-foreground mb-2">No quizzes yet</h2>
-            <p className="text-muted-foreground mb-8">Create your first GoComet-styled quiz to get started.</p>
+            <p className="text-muted-foreground mb-8">Create your first GoComet quiz to get started.</p>
             <button
               onClick={handleCreateNew}
               className="game-button brand-gradient text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 shadow-[0_8px_20px_rgba(0,84,255,0.2)]"
