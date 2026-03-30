@@ -1,0 +1,22 @@
+packages:
+  "framer-motion": "For bold, game-show style page transitions and interactive animations"
+  "canvas-confetti": "For celebration effects on the game results podium"
+  "@types/canvas-confetti": "Types for canvas-confetti"
+  "react-hook-form": "For robust form state management in the quiz editor"
+  "@hookform/resolvers": "Zod validation resolver for forms"
+  "zod": "For client-side form validation schemas"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility to cleanly merge tailwind classes"
+
+images:
+  - path: "artifacts/kahoot-clone/public/images/logo.png"
+    description: "Vibrant, bold, cartoony 3D logo that says 'QuizBlast' in bright purple and yellow, energetic game show style on a transparent background"
+    aspect_ratio: "1:1"
+  - path: "artifacts/kahoot-clone/public/images/hero-bg.png"
+    description: "Abstract 3D geometric shapes (triangles, circles, squares) floating in a vibrant purple and pink background, energetic, colorful, high contrast"
+    aspect_ratio: "16:9"
+
+notes:
+  - WebSocket connects to /api/ws for real-time game events
+  - Using generated Orval hooks from @workspace/api-client-react for all REST API calls
+  - Player IDs and game states are managed locally/in sessionStorage to persist through quick refreshes

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "QuizBlast - Kahoot Clone"
+version = "1.0.0"
+id = "artifacts/kahoot-clone"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22993
+
+[services.development]
+run = "pnpm --filter @workspace/kahoot-clone run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/kahoot-clone", "run", "build" ]
+publicDir = "artifacts/kahoot-clone/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22993"
+BASE_PATH = "/"

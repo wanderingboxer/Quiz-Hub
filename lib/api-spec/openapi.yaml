@@ -1,15 +1,20 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: QuizBlast API - Kahoot Clone
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: quizzes
+    description: Quiz management
+  - name: games
+    description: Game session management
+  - name: questions
+    description: Question management
 paths:
   /healthz:
     get:
@@ -24,6 +29,262 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /quizzes:
+    get:
+      operationId: listQuizzes
+      tags: [quizzes]
+      summary: List all quizzes
+      responses:
+        "200":
+          description: List of quizzes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Quiz"
+    post:
+      operationId: createQuiz
+      tags: [quizzes]
+      summary: Create a new quiz
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuizBody"
+      responses:
+        "201":
+          description: Created quiz
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quiz"
+
+  /quizzes/{id}:
+    get:
+      operationId: getQuiz
+      tags: [quizzes]
+      summary: Get a quiz with questions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Quiz with questions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizWithQuestions"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateQuiz
+      tags: [quizzes]
+      summary: Update a quiz
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateQuizBody"
+      responses:
+        "200":
+          description: Updated quiz
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quiz"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteQuiz
+      tags: [quizzes]
+      summary: Delete a quiz
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /quizzes/{id}/questions:
+    post:
+      operationId: addQuestion
+      tags: [questions]
+      summary: Add a question to a quiz
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuestionBody"
+      responses:
+        "201":
+          description: Created question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /questions/{id}:
+    patch:
+      operationId: updateQuestion
+      tags: [questions]
+      summary: Update a question
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateQuestionBody"
+      responses:
+        "200":
+          description: Updated question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Question"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteQuestion
+      tags: [questions]
+      summary: Delete a question
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games:
+    post:
+      operationId: createGame
+      tags: [games]
+      summary: Create a new game session from a quiz
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGameBody"
+      responses:
+        "201":
+          description: Created game
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+
+  /games/{gameCode}:
+    get:
+      operationId: getGame
+      tags: [games]
+      summary: Get a game by code
+      parameters:
+        - name: gameCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Game info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /games/{gameCode}/results:
+    get:
+      operationId: getGameResults
+      tags: [games]
+      summary: Get final results for a completed game
+      parameters:
+        - name: gameCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Game results with leaderboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameResults"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +295,232 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Quiz:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        questionCount:
+          type: integer
+      required:
+        - id
+        - title
+        - description
+        - createdAt
+        - updatedAt
+        - questionCount
+
+    CreateQuizBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+      required:
+        - title
+
+    UpdateQuizBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+
+    Question:
+      type: object
+      properties:
+        id:
+          type: integer
+        quizId:
+          type: integer
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        correctOption:
+          type: integer
+        timeLimit:
+          type: integer
+        points:
+          type: integer
+        orderIndex:
+          type: integer
+      required:
+        - id
+        - quizId
+        - text
+        - options
+        - correctOption
+        - timeLimit
+        - points
+        - orderIndex
+
+    CreateQuestionBody:
+      type: object
+      properties:
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        correctOption:
+          type: integer
+        timeLimit:
+          type: integer
+        points:
+          type: integer
+        orderIndex:
+          type: integer
+      required:
+        - text
+        - options
+        - correctOption
+
+    UpdateQuestionBody:
+      type: object
+      properties:
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        correctOption:
+          type: integer
+        timeLimit:
+          type: integer
+        points:
+          type: integer
+        orderIndex:
+          type: integer
+
+    QuizWithQuestions:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        questionCount:
+          type: integer
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Question"
+      required:
+        - id
+        - title
+        - description
+        - createdAt
+        - updatedAt
+        - questionCount
+        - questions
+
+    Game:
+      type: object
+      properties:
+        id:
+          type: integer
+        gameCode:
+          type: string
+        quizId:
+          type: integer
+        quizTitle:
+          type: string
+        status:
+          type: string
+          enum: [waiting, active, finished]
+        currentQuestionIndex:
+          type: ["integer", "null"]
+        playerCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - gameCode
+        - quizId
+        - quizTitle
+        - status
+        - currentQuestionIndex
+        - playerCount
+        - createdAt
+
+    CreateGameBody:
+      type: object
+      properties:
+        quizId:
+          type: integer
+      required:
+        - quizId
+
+    PlayerResult:
+      type: object
+      properties:
+        playerId:
+          type: integer
+        nickname:
+          type: string
+        score:
+          type: integer
+        rank:
+          type: integer
+        correctAnswers:
+          type: integer
+        totalAnswers:
+          type: integer
+      required:
+        - playerId
+        - nickname
+        - score
+        - rank
+        - correctAnswers
+        - totalAnswers
+
+    GameResults:
+      type: object
+      properties:
+        gameCode:
+          type: string
+        quizTitle:
+          type: string
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerResult"
+      required:
+        - gameCode
+        - quizTitle
+        - players
