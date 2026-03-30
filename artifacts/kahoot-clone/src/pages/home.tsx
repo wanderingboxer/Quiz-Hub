@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
-import { Play, Presentation, Sparkles } from "lucide-react";
+import { Play, Presentation } from "lucide-react";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -33,14 +33,18 @@ export default function Home() {
           transition={{ duration: 0.45 }}
           className="order-2 lg:order-1"
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 px-4 py-2 text-sm font-bold text-primary">
-            <Sparkles size={16} /> GoComet Townhall
+          <div className="inline-flex items-center rounded-2xl bg-white/80 px-4 py-3 shadow-sm border border-border">
+            <img
+              src={`${import.meta.env.BASE_URL}images/logo-dark.webp`}
+              alt="GoComet logo"
+              className="h-10 w-auto object-contain"
+            />
           </div>
 
           <h1 className="mt-5 text-5xl font-display font-black leading-tight text-foreground sm:text-6xl lg:text-7xl">
             GoComet
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-[#0C214C] via-[#1A316C] to-[#0054FF]">
-              Quiz Hub
+              Townhall
             </span>
           </h1>
 
