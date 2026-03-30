@@ -22,6 +22,9 @@ import {
   getLeaderboard,
   removePlayer,
   getSessionPlayerCount,
+  addLiveQuestion,
+  answerLiveQuestion,
+  getLiveQuestions,
 } from "../lib/gameManager";
 
 interface WsMessage {
@@ -231,6 +234,59 @@ export function setupWebSocket(server: Server): void {
             if (isAllAnswered(gameCode)) {
               endQuestion(gameCode);
             }
+            break;
+          }
+
+          case "ask_question": {
+            if (!currentGameCode || !currentPlayerId) return;
+            const session = getGameSession(currentGameCode);
+            if (!session) return;
+
+            const player = session.players.get(currentPlayerId);
+            if (!player) return;
+
+            const text = String(msg.payload.text || "").trim();
+            if (!text) return;
+
+            const lq = addLiveQuestion(currentGameCode, currentPlayerId, player.nickname, text);
+            if (!lq) return;
+
+            sendToHost(currentGameCode, {
+              type: "new_live_question",
+              payload: lq,
+            });
+
+            sendToPlayer(currentGameCode, currentPlayerId, {
+              type: "live_question_sent",
+              payload: { id: lq.id },
+            });
+            break;
+          }
+
+          case "answer_live_question": {
+            if (!isHost || !currentGameCode) return;
+
+            const questionId = String(msg.payload.questionId || "");
+            const answerText = String(msg.payload.answer || "").trim();
+            if (!questionId || !answerText) return;
+
+            const answered = answerLiveQuestion(currentGameCode, questionId, answerText);
+            if (!answered) return;
+
+            broadcast(currentGameCode, {
+              type: "live_question_answered",
+              payload: answered,
+            });
+            break;
+          }
+
+          case "get_live_questions": {
+            if (!isHost || !currentGameCode) return;
+            const questions = getLiveQuestions(currentGameCode);
+            ws.send(JSON.stringify({
+              type: "live_questions_list",
+              payload: { questions },
+            }));
             break;
           }
 

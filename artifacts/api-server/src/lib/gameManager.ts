@@ -9,6 +9,16 @@ interface Player {
   answeredCurrentQuestion: boolean;
 }
 
+export interface LiveQuestion {
+  id: string;
+  playerId: number;
+  nickname: string;
+  text: string;
+  answer: string | null;
+  answeredAt: number | null;
+  askedAt: number;
+}
+
 interface GameSession {
   gameCode: string;
   quizId: number;
@@ -26,6 +36,7 @@ interface GameSession {
   hostWs: WebSocket | null;
   questionTimer: ReturnType<typeof setTimeout> | null;
   questionStartTime: number;
+  liveQuestions: LiveQuestion[];
 }
 
 const gameSessions = new Map<string, GameSession>();
@@ -45,9 +56,43 @@ export function createGameSession(gameCode: string, quizId: number): GameSession
     hostWs: null,
     questionTimer: null,
     questionStartTime: 0,
+    liveQuestions: [],
   };
   gameSessions.set(gameCode, session);
   return session;
+}
+
+export function addLiveQuestion(gameCode: string, playerId: number, nickname: string, text: string): LiveQuestion | null {
+  const session = gameSessions.get(gameCode);
+  if (!session) return null;
+
+  const q: LiveQuestion = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    playerId,
+    nickname,
+    text: text.slice(0, 300),
+    answer: null,
+    answeredAt: null,
+    askedAt: Date.now(),
+  };
+  session.liveQuestions.push(q);
+  return q;
+}
+
+export function answerLiveQuestion(gameCode: string, questionId: string, answer: string): LiveQuestion | null {
+  const session = gameSessions.get(gameCode);
+  if (!session) return null;
+
+  const q = session.liveQuestions.find(q => q.id === questionId);
+  if (!q) return null;
+
+  q.answer = answer.slice(0, 500);
+  q.answeredAt = Date.now();
+  return q;
+}
+
+export function getLiveQuestions(gameCode: string): LiveQuestion[] {
+  return gameSessions.get(gameCode)?.liveQuestions ?? [];
 }
 
 export function setGameQuestions(gameCode: string, questions: GameSession["questions"]): void {
