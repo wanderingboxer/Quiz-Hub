@@ -15,7 +15,7 @@ export default function Home() {
     if (!gameCode || !nickname) return;
 
     sessionStorage.setItem("quizblast_nickname", nickname);
-    setLocation(openQa ? `/play/${gameCode.toUpperCase()}?tab=qa` : `/play/${gameCode.toUpperCase()}`);
+    setLocation(openQa ? `/play/${gameCode.toUpperCase()}?tab=qa` : `/play/${gameCode.toUpperCase()}?tab=game`);
   };
 
   const handleJoin = (e: React.FormEvent) => {
@@ -81,12 +81,12 @@ export default function Home() {
             <div className="mb-6">
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Join a live session</p>
               <h2 className="mt-2 text-3xl font-display font-black text-foreground">Enter your game PIN</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Use the PIN shared by the host to enter the GoComet quiz room or open the Q&A instantly.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Use the PIN shared by the host to enter the GoComet quiz room.</p>
             </div>
 
             <div className="mb-5 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Always on</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">Players can ask the host questions before, during, and between quiz rounds.</p>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Live Q&A</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">Questions stay open throughout the presentation, and the quiz can begin later when the host is ready.</p>
             </div>
 
             <form onSubmit={handleJoin} className="space-y-4">
