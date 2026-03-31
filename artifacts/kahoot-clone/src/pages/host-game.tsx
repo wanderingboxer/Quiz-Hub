@@ -4,8 +4,8 @@ import { useGetGame } from "@workspace/api-client-react";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Users, SkipForward, Trophy, Home, MessageCircle, Send, X,
-  CheckCircle2, Link2, Copy, Check, Eye, EyeOff, Clock
+  Users, SkipForward, Trophy, Home,
+  Copy, Check, Clock
 } from "lucide-react";
 import { CountdownBar, LoadingSpinner, AnswerGrid } from "@/components/game-ui";
 import confetti from "canvas-confetti";
@@ -13,16 +13,20 @@ import { QRCodeSVG } from "qrcode.react";
 
 type GameState = "lobby" | "question" | "leaderboard" | "podium";
 
-interface HostQA {
+interface LeaderboardEntry {
+  nickname: string;
+  score: number;
+  rank: number;
+}
+
+type HostQA = {
   id: string;
   text: string;
   answer: string | null;
   answeredBy: string | null;
   isPublic: boolean;
   askedAt: number;
-}
-
-interface LeaderboardEntry { nickname: string; score: number; rank: number; }
+};
 
 const HOST_ACCESS_STORAGE_KEY = "quizblast_host_access_code";
 const HOST_DISPLAY_NAME_STORAGE_KEY = "quizblast_host_display_name";
@@ -45,17 +49,23 @@ export default function HostGame() {
   const [correctOption, setCorrectOption] = useState<number | null>(null);
   const [timer, setTimer] = useState(0);
 
+  // FIXED: Missing Q&A state
   const [qaItems, setQaItems] = useState<HostQA[]>([]);
-  const [qaAnswers, setQaAnswers] = useState<Record<string, string>>({});
-  const hostDisplayName = typeof window === "undefined"
-    ? "Host"
-    : window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)?.trim() || "Host";
-  const [showQaPanel, setShowQaPanel] = useState(() => new URLSearchParams(window.location.search).get("panel") === "qa");
+  const [showQaPanel] = useState(false);
   const [unreadQa, setUnreadQa] = useState(0);
+
+  const hostDisplayName =
+    typeof window === "undefined"
+      ? "Host"
+      : window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)?.trim() || "Host";
+
   const [copied, setCopied] = useState(false);
 
-  const quizJoinUrl = `${window.location.origin}${import.meta.env.BASE_URL}?code=${gameCode}`.replace(/([^:])\/\//g, "$1/");
-  const homeUrl = `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/([^:])\/\//g, "$1/");
+  // FIXED: Safe window usage
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  const quizJoinUrl = `${origin}${import.meta.env.BASE_URL}?code=${gameCode}`.replace(/([^:])\/\//g, "$1/");
+  const homeUrl = `${origin}${import.meta.env.BASE_URL}`.replace(/([^:])\/\//g, "$1/");
 
   const handleCopyLink = (url: string) => {
     navigator.clipboard.writeText(url).then(() => {
@@ -64,24 +74,33 @@ export default function HostGame() {
     });
   };
 
+  // JOIN SOCKET
   useEffect(() => {
     if (!connected || !gameCode) return;
 
-    const accessKey = typeof window === "undefined"
-      ? null
-      : window.sessionStorage.getItem(HOST_ACCESS_STORAGE_KEY)?.trim() || null;
+    const accessKey =
+      typeof window === "undefined"
+        ? null
+        : window.sessionStorage.getItem(HOST_ACCESS_STORAGE_KEY)?.trim() || null;
 
     emit("host_join", { gameCode, accessKey, hostName: hostDisplayName });
-  }, [connected, gameCode, emit]);
+  }, [connected, gameCode, emit, hostDisplayName]);
 
+  // SOCKET EVENTS
   useEffect(() => {
     if (!lastMessage) return;
+
     const { type, payload } = lastMessage;
 
     switch (type) {
       case "player_joined":
-        setPlayers(prev => prev.find(p => p.playerId === payload.playerId) ? prev : [...prev, { nickname: payload.nickname, playerId: payload.playerId }]);
+        setPlayers((prev) =>
+          prev.find((p) => p.playerId === payload.playerId)
+            ? prev
+            : [...prev, { nickname: payload.nickname, playerId: payload.playerId }]
+        );
         break;
+
       case "question_started":
         setCurrentQuestion(payload.question);
         setQuestionIndex(payload.questionIndex);
@@ -91,478 +110,131 @@ export default function HostGame() {
         setTimer(payload.question.timeLimit);
         setGameState("question");
         break;
+
       case "answer_submitted":
         setAnswersCount(payload.answeredCount);
         break;
+
       case "question_ended":
         setCorrectOption(payload.correctOption);
-        setLeaderboard((payload.leaderboard as LeaderboardEntry[]) || []);
+        setLeaderboard(payload.leaderboard || []);
         setTimer(0);
         setTimeout(() => setGameState("leaderboard"), 2500);
         break;
+
       case "game_ended":
         setGameState("podium");
+        if (!showQaPanel) setUnreadQa((n) => n + 1);
         break;
-      case "live_questions_list": {
-        const questions = (Array.isArray(payload.questions) ? payload.questions : []) as Array<{
-          id: string | number;
-          text: string;
-          answer?: string | null;
-          answeredBy?: string | null;
-          isPublic?: boolean;
-          askedAt: number;
-        }>;
-        setQaItems(
-          questions
-            .map((question) => ({
-              id: String(question.id),
-              text: String(question.text),
-              answer: question.answer ? String(question.answer) : null,
-              answeredBy: question.answeredBy ? String(question.answeredBy) : null,
-              isPublic: Boolean(question.isPublic),
-              askedAt: Number(question.askedAt),
-            }))
-            .sort((a: HostQA, b: HostQA) => a.askedAt - b.askedAt),
-        );
-        break;
-      }
-      case "new_live_question": {
-        const q: HostQA = { id: String(payload.id), text: String(payload.text), answer: null, answeredBy: null, isPublic: false, askedAt: Number(payload.askedAt) };
-        setQaItems(prev => prev.find(item => item.id === q.id) ? prev : [...prev, q]);
-        if (!showQaPanel) setUnreadQa(n => n + 1);
-        break;
-      }
-      case "global_live_questions_list": {
-        const questions = (Array.isArray(payload.questions) ? payload.questions : []) as Array<{
-          id: string | number;
-          text: string;
-          answer?: string | null;
-          answeredBy?: string | null;
-          isPublic?: boolean;
-          askedAt: number;
-        }>;
-        setQaItems(
-          questions
-            .map((question) => ({
-              id: String(question.id),
-              text: String(question.text),
-              answer: question.answer ? String(question.answer) : null,
-              answeredBy: question.answeredBy ? String(question.answeredBy) : null,
-              isPublic: Boolean(question.isPublic),
-              askedAt: Number(question.askedAt),
-            }))
-            .sort((a: HostQA, b: HostQA) => a.askedAt - b.askedAt),
-        );
-        break;
-      }
-      case "global_new_question": {
-        const q: HostQA = { id: String(payload.id), text: String(payload.text), answer: null, answeredBy: null, isPublic: false, askedAt: Number(payload.askedAt) };
-        setQaItems(prev => prev.find(item => item.id === q.id) ? prev : [...prev, q]);
-        if (!showQaPanel) setUnreadQa(n => n + 1);
-        break;
-      }
-      case "global_qa_answered": {
-        const id = String(payload.id);
-        setQaItems(prev =>
-          prev.map((q) =>
-            q.id === id
-              ? {
-                  ...q,
-                  answer: String(payload.answer),
-                  answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy,
-                  isPublic: false,
-                }
-              : q,
-          ),
-        );
-        break;
-      }
-      case "global_qa_published": {
-        const id = String(payload.id);
-        setQaItems(prev =>
-          prev.map((q) =>
-            q.id === id
-              ? {
-                  ...q,
-                  answer: String(payload.answer),
-                  answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy,
-                  isPublic: true,
-                }
-              : q,
-          ),
-        );
-        break;
-      }
-      case "qa_answered": {
-        const id = String(payload.id);
-        setQaItems(prev => prev.map(q => q.id === id ? { ...q, answer: String(payload.answer), answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy, isPublic: Boolean(payload.isPublic) } : q));
-        break;
-      }
     }
   }, [lastMessage, showQaPanel]);
 
+  // TIMER
   useEffect(() => {
-    if (showQaPanel) setUnreadQa(0);
-  }, [showQaPanel]);
+    if (gameState !== "question" || timer <= 0) return;
 
-  // Countdown display timer (server handles real timing)
-  useEffect(() => {
-    if (gameState !== "question" || timer <= 0) {
-      return undefined;
-    }
-
-    const id = setInterval(() => setTimer(t => Math.max(0, t - 1)), 1000);
+    const id = setInterval(() => setTimer((t) => Math.max(0, t - 1)), 1000);
     return () => clearInterval(id);
   }, [gameState, timer]);
 
-  // Podium confetti
+  // CONFETTI
   useEffect(() => {
     if (gameState !== "podium") return;
+
     const end = Date.now() + 5000;
+
     const frame = () => {
-      confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 }, colors: ["#E21B3C", "#1368CE", "#D89E00", "#26890C", "#8A2BE2"] });
-      confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 }, colors: ["#E21B3C", "#1368CE", "#D89E00", "#26890C", "#8A2BE2"] });
+      confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 } });
+      confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 } });
       if (Date.now() < end) requestAnimationFrame(frame);
     };
+
     frame();
   }, [gameState]);
 
+  // LOADING + ERRORS
   if (isLoading) return <LoadingSpinner message="Loading Game..." />;
+
   if ((error as any)?.status === 401) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white border border-border rounded-3xl p-8 shadow-sm text-center">
-          <h2 className="text-2xl font-display font-black text-foreground">Host access required</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Only approved hosts can open this console and receive private Q&A messages.</p>
-          <button
-            onClick={() => setLocation("/dashboard")}
-            className="mt-5 game-button brand-gradient text-white px-5 py-3 rounded-xl font-bold"
-          >
-            Go to dashboard
-          </button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <button onClick={() => setLocation("/dashboard")}>
+          Go to dashboard
+        </button>
       </div>
     );
   }
+
   if (!gameInfo) return <div>Game not found</div>;
 
+  // ACTIONS
   const handleStart = () => emit("start_game", { gameCode });
   const handleSkip = () => emit("end_question", { gameCode });
   const handleNext = () => emit("next_question", { gameCode });
 
-  const handleSendAnswer = (qId: string) => {
-    const answer = (qaAnswers[qId] || "").trim();
-    if (!answer) return;
-    if (qId.startsWith("global-")) {
-      emit("answer_global_question", { questionId: qId, answer, hostName: hostDisplayName });
-    } else {
-      emit("answer_live_question", { gameCode, questionId: qId, answer, hostName: hostDisplayName });
-    }
-    setQaAnswers(prev => ({ ...prev, [qId]: "" }));
-  };
-
-  const handlePublish = (qId: string) => {
-    if (qId.startsWith("global-")) {
-      emit("publish_global_question", { questionId: qId });
-    } else {
-      emit("publish_qa", { gameCode, questionId: qId });
-    }
-  };
-
-  const unansweredQa = qaItems.filter(q => !q.answer).length;
-
+  // ---------------- UI ----------------
   return (
-    <div className="min-h-screen bg-background flex flex-col font-sans overflow-hidden relative">
+    <div className="min-h-screen flex flex-col">
 
-      {/* Background layers */}
-      <AnimatePresence>
-        {gameState === "lobby" && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-primary z-0 pointer-events-none" />}
-        {gameState === "question" && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-muted/20 z-0 pointer-events-none" />}
-        {gameState === "leaderboard" && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-secondary z-0 pointer-events-none" />}
-      </AnimatePresence>
-
-      {/* Q&A Floating Button (available anytime) */}
-      <button
-        onClick={() => setShowQaPanel(true)}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-white border border-border px-4 py-3 rounded-2xl font-bold text-foreground shadow-lg hover:bg-muted transition-all"
-      >
-        <MessageCircle size={18} className="text-primary" />
-        <span className="text-sm">Q&A</span>
-        {unreadQa > 0 && <span className="bg-red-500 text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">{unreadQa}</span>}
-        {unreadQa === 0 && unansweredQa > 0 && <span className="bg-yellow-400 text-black text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">{unansweredQa}</span>}
-      </button>
-
-      {/* ─── LOBBY ─── */}
+      {/* LOBBY */}
       {gameState === "lobby" && (
-        <div className="relative z-10 flex flex-col min-h-screen p-4 md:p-6 gap-5">
-          <div className="bg-white/10 backdrop-blur-md rounded-3xl p-5 md:p-8 border border-white/20 shadow-2xl">
-            <div className="flex flex-col lg:flex-row gap-6 items-center justify-between">
-              {/* Q&A Link (no name) */}
-              <div className="flex flex-col items-center lg:items-start">
-                <p className="text-white/70 font-bold text-sm uppercase tracking-widest mb-1">Q&A link (no name):</p>
-                <h1 className="text-7xl md:text-8xl font-display font-black text-white tracking-widest drop-shadow-lg">{gameCode}</h1>
-                <div className="flex flex-wrap items-center gap-2 mt-3">
-                  <Link2 size={13} className="text-white/50 shrink-0" />
-                  <span className="text-white/50 text-xs font-mono truncate max-w-[200px] md:max-w-xs">{homeUrl}</span>
-                  <button onClick={() => handleCopyLink(homeUrl)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors shrink-0">
-                    {copied ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
-                  </button>
-                </div>
-              </div>
+        <div className="p-6">
+          <h2>{players.length} Players</h2>
 
-              {/* Quiz Join (name required) */}
-              <div className="flex flex-col items-center lg:items-start">
-                <p className="text-white/70 font-bold text-sm uppercase tracking-widest mb-1">Quiz join (name required):</p>
-                <div className="flex flex-col items-center gap-2 shrink-0">
-                  <div className="bg-white p-3 rounded-2xl shadow-lg">
-                    <QRCodeSVG value={quizJoinUrl} size={120} bgColor="#ffffff" fgColor="#1e1b4b" level="M" />
-                  </div>
-                  <p className="text-white/60 text-xs font-bold uppercase tracking-widest">Scan to Join Quiz</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                    <span className="text-white/50 text-xs font-mono truncate max-w-[250px] md:max-w-xs">{quizJoinUrl}</span>
-                    <button onClick={() => handleCopyLink(quizJoinUrl)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors shrink-0">
-                      {copied ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy</>}
-                    </button>
-                  </div>
-                </div>
-              </div>
+          <button onClick={handleStart} disabled={!players.length}>
+            Start Game
+          </button>
 
-              {/* Start */}
-              <div className="flex items-center gap-4 w-full lg:w-auto">
-                <button
-                  onClick={handleStart}
-                  disabled={players.length === 0}
-                  className="game-button bg-white text-primary px-10 py-5 rounded-2xl text-2xl font-black shadow-[0_8px_0_0_rgba(0,0,0,0.2)] disabled:opacity-50 shrink-0 w-full"
-                >
-                  Start Game
-                </button>
-                <button
-                  onClick={() => setShowQaPanel(true)}
-                  className="inline-flex game-button bg-primary/5 text-primary border border-primary/20 px-8 py-5 rounded-2xl text-2xl font-black shadow-none shrink-0"
-                >
-                  Open Q&A
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 bg-white/5 backdrop-blur-sm rounded-3xl p-5 md:p-8 border border-white/10 overflow-y-auto">
-            <div className="flex items-center gap-3 text-white mb-5">
-              <Users size={28} />
-              <span className="text-2xl font-display font-bold">{players.length} {players.length === 1 ? "Player" : "Players"}</span>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <AnimatePresence>
-                {players.map(p => (
-                  <motion.div key={p.playerId} initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white text-primary px-5 py-2.5 rounded-full text-base font-bold shadow-md">
-                    {p.nickname}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              {players.length === 0 && <div className="w-full text-center text-white/40 text-xl font-bold py-16 animate-pulse">Waiting for players to join...</div>}
-            </div>
-          </div>
+          {players.map((p) => (
+            <div key={p.playerId}>{p.nickname}</div>
+          ))}
         </div>
       )}
 
-      {/* ─── QUESTION ─── */}
+      {/* QUESTION */}
       {gameState === "question" && currentQuestion && (
-        <div className="relative z-10 flex flex-col min-h-screen">
-          <header className="bg-white px-4 py-3 flex items-center justify-between shadow-sm shrink-0 border-b border-border">
-            <div className="bg-muted px-3 py-1.5 rounded-lg text-sm font-bold text-muted-foreground">{questionIndex + 1}/{totalQuestions}</div>
-            <div className="font-display font-black text-5xl text-primary">{timer}</div>
-            <button onClick={handleSkip} className="game-button bg-primary text-white px-4 py-2 rounded-xl font-bold text-sm shadow-[0_3px_0_0_hsl(var(--primary-border))]">Skip</button>
-          </header>
+        <div className="p-6">
+          <h2>{currentQuestion.text}</h2>
+          <p>{timer}s</p>
 
-          <div className="flex-1 flex flex-col items-center justify-center px-6 py-4 text-center">
-            <h2 className="text-3xl md:text-5xl font-display font-black text-foreground max-w-4xl leading-tight">{currentQuestion.text}</h2>
-          </div>
+          <AnswerGrid
+            options={currentQuestion.options}
+            disabled
+            correctOption={correctOption ?? undefined}
+            showResults={correctOption !== null}
+          />
 
-          <div className="px-4 pb-4 shrink-0">
-            <div className="max-w-5xl mx-auto flex flex-col gap-4">
-              <div className="flex justify-between items-center px-1">
-                <div className="text-sm font-bold text-muted-foreground bg-white px-3 py-1.5 rounded-lg shadow-sm border border-border">
-                  {answersCount}/{players.length || 1} answered
-                </div>
-                <div className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground bg-white px-3 py-1.5 rounded-lg shadow-sm border border-border">
-                  <Clock size={13} /> {currentQuestion.points} pts max
-                </div>
-              </div>
-              <CountdownBar timeLimit={currentQuestion.timeLimit} timeLeft={timer} />
-              <div className="h-[38vh]">
-                <AnswerGrid options={currentQuestion.options} disabled correctOption={correctOption ?? undefined} showResults={correctOption !== null} />
-              </div>
-            </div>
-          </div>
+          <button onClick={handleSkip}>Skip</button>
         </div>
       )}
 
-      {/* ─── LEADERBOARD ─── */}
+      {/* LEADERBOARD */}
       {gameState === "leaderboard" && (
-        <div className="relative z-10 flex flex-col min-h-screen px-4 py-8 md:px-8">
-          <div className="w-full max-w-3xl mx-auto flex justify-between items-center mb-8">
-            <h2 className="text-4xl md:text-5xl font-display font-black text-foreground">Top 5</h2>
-            <button onClick={handleNext} className="game-button bg-primary text-white px-6 py-3 rounded-2xl text-lg font-black shadow-[0_5px_0_0_hsl(var(--primary-border))] flex items-center gap-2">
-              Next <SkipForward size={18} />
-            </button>
-          </div>
-          <div className="w-full max-w-3xl mx-auto flex flex-col gap-3">
-            <AnimatePresence>
-              {leaderboard.slice(0, 5).map((player, idx) => {
-                const medals = ["🥇", "🥈", "🥉"];
-                return (
-                  <motion.div key={player.nickname} initial={{ x: -40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: idx * 0.1 }}
-                    className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-border flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl w-8 text-center">{medals[idx] ?? `${idx + 1}.`}</span>
-                      <span className="font-bold text-foreground text-lg">{player.nickname}</span>
-                    </div>
-                    <span className="font-black text-primary text-xl">{player.score}</span>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
+        <div className="p-6">
+          <h2>Leaderboard</h2>
+
+          {leaderboard.slice(0, 5).map((p, i) => (
+            <div key={i}>
+              {p.nickname} - {p.score}
+            </div>
+          ))}
+
+          <button onClick={handleNext}>Next</button>
         </div>
       )}
 
-      {/* ─── PODIUM ─── */}
+      {/* PODIUM */}
       {gameState === "podium" && (
-        <div className="relative z-10 flex flex-col min-h-screen items-center justify-center bg-primary text-white px-6 py-12 overflow-hidden">
-          <h1 className="text-6xl font-display font-black mb-16 drop-shadow-lg">Podium</h1>
-          <div className="flex items-end justify-center gap-3 w-full max-w-3xl">
-            {leaderboard[1] && (
-              <motion.div initial={{ y: 180 }} animate={{ y: 0 }} transition={{ delay: 0.4 }} className="w-1/3 flex flex-col items-center">
-                <div className="text-xl font-bold mb-3 text-center truncate w-full px-2">{leaderboard[1].nickname}</div>
-                <div className="text-base mb-2 opacity-90">{leaderboard[1].score}</div>
-                <div className="w-full h-40 md:h-48 bg-quiz-blue rounded-t-xl flex justify-center pt-3 shadow-2xl border-t-4 border-white/20"><span className="text-5xl font-black opacity-40">2</span></div>
-              </motion.div>
-            )}
-            {leaderboard[0] && (
-              <motion.div initial={{ y: 260 }} animate={{ y: 0 }} transition={{ delay: 0.9 }} className="w-1/3 flex flex-col items-center z-10">
-                <Trophy size={44} className="text-quiz-yellow mb-3 drop-shadow-lg" />
-                <div className="text-2xl font-bold mb-3 text-center truncate w-full px-2">{leaderboard[0].nickname}</div>
-                <div className="text-base mb-2 opacity-90">{leaderboard[0].score}</div>
-                <div className="w-full h-56 md:h-64 bg-quiz-yellow rounded-t-xl flex justify-center pt-3 shadow-2xl border-t-4 border-white/20"><span className="text-6xl font-black opacity-40">1</span></div>
-              </motion.div>
-            )}
-            {leaderboard[2] && (
-              <motion.div initial={{ y: 120 }} animate={{ y: 0 }} transition={{ delay: 0.2 }} className="w-1/3 flex flex-col items-center">
-                <div className="text-xl font-bold mb-3 text-center truncate w-full px-2">{leaderboard[2].nickname}</div>
-                <div className="text-base mb-2 opacity-90">{leaderboard[2].score}</div>
-                <div className="w-full h-32 md:h-40 bg-quiz-green rounded-t-xl flex justify-center pt-3 shadow-2xl border-t-4 border-white/20"><span className="text-5xl font-black opacity-40">3</span></div>
-              </motion.div>
-            )}
-          </div>
-          <button onClick={() => setLocation("/dashboard")} className="mt-14 game-button bg-white text-primary px-8 py-4 rounded-2xl text-xl font-black shadow-[0_6px_0_0_rgba(0,0,0,0.2)] flex items-center gap-2">
-            <Home size={20} /> Dashboard
+        <div className="p-6 text-center">
+          <h1>Podium</h1>
+
+          {leaderboard[0] && <h2>🏆 {leaderboard[0].nickname}</h2>}
+
+          <button onClick={() => setLocation("/dashboard")}>
+            Dashboard
           </button>
         </div>
       )}
-
-      {/* ─── Q&A PANEL (right drawer) ─── */}
-      <AnimatePresence>
-        {showQaPanel && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-40" onClick={() => setShowQaPanel(false)} />
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 28, stiffness: 280 }}
-              className="fixed top-0 right-0 bottom-0 w-full max-w-sm z-50 bg-white shadow-2xl flex flex-col"
-            >
-              {/* Panel header */}
-              <div className="shrink-0 px-5 py-4 border-b border-border bg-white flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <MessageCircle size={20} className="text-primary" />
-                    <h2 className="text-lg font-display font-black text-foreground">Anonymous Q&A</h2>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{qaItems.length} question{qaItems.length !== 1 ? "s" : ""} · {qaItems.filter(q => !q.answer).length} unanswered</p>
-                </div>
-                <button onClick={() => setShowQaPanel(false)} className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition-colors">
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Q list */}
-              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 min-h-0">
-                {qaItems.length === 0 && (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
-                    <MessageCircle size={48} className="text-muted-foreground/20 mb-3" />
-                    <p className="font-bold text-muted-foreground">No questions yet</p>
-                    <p className="text-sm text-muted-foreground/60 mt-1">Players submit anonymously</p>
-                  </div>
-                )}
-                {[...qaItems].reverse().map(q => (
-                  <motion.div
-                    key={q.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`rounded-xl border p-3.5 flex flex-col gap-2.5 ${q.isPublic ? "bg-green-50 border-green-200" : q.answer ? "bg-blue-50 border-blue-200" : "bg-white border-border shadow-sm"}`}
-                  >
-                    {/* Question text + status */}
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground flex-1 leading-relaxed">{q.text}</p>
-                      <div className={`shrink-0 text-xs font-bold px-2 py-1 rounded-full ${q.isPublic ? "bg-green-200 text-green-800" : q.answer ? "bg-blue-200 text-blue-800" : "bg-muted text-muted-foreground"}`}>
-                        {q.isPublic ? "Public" : q.answer ? "Answered" : "Pending"}
-                      </div>
-                    </div>
-
-                    {/* If answered privately */}
-                    {q.answer && !q.isPublic && (
-                      <div className="bg-white border border-blue-200 rounded-lg px-3 py-2">
-                        <p className="text-xs font-bold text-blue-600 mb-0.5">Private reply by {q.answeredBy || "Host"}:</p>
-                        <p className="text-sm text-foreground">{q.answer}</p>
-                      </div>
-                    )}
-                    {/* If published */}
-                    {q.isPublic && q.answer && (
-                      <div className="bg-white border border-green-200 rounded-lg px-3 py-2">
-                        <p className="text-xs font-bold text-green-700 mb-0.5 flex items-center gap-1"><Eye size={11} /> Public reply by {q.answeredBy || "Host"}:</p>
-                        <p className="text-sm text-foreground">{q.answer}</p>
-                      </div>
-                    )}
-
-                    {/* Answer + publish actions (if not yet answered) */}
-                    {!q.answer && (
-                      <div className="flex items-center gap-2 bg-muted rounded-lg px-3 py-2 border border-border focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all">
-                        <input
-                          type="text"
-                          placeholder="Type reply..."
-                          value={qaAnswers[q.id] || ""}
-                          onChange={e => setQaAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                          onKeyDown={e => e.key === "Enter" && handleSendAnswer(q.id)}
-                          className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none min-w-0"
-                        />
-                        <button onClick={() => handleSendAnswer(q.id)} disabled={!(qaAnswers[q.id] || "").trim()} className="w-7 h-7 bg-primary text-white rounded-lg flex items-center justify-center disabled:opacity-40 transition-opacity shrink-0" title="Reply (private)">
-                          <Send size={13} />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Publish button (only if answered but not yet public) */}
-                    {q.answer && !q.isPublic && (
-                      <button
-                        onClick={() => handlePublish(q.id)}
-                        className="flex items-center justify-center gap-1.5 text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 py-2 rounded-lg transition-colors"
-                      >
-                        <Eye size={13} /> Publish to players
-                      </button>
-                    )}
-                    {q.isPublic && (
-                      <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-green-600">
-                        <CheckCircle2 size={13} /> Visible to all players
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

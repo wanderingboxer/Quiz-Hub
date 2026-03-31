@@ -19,341 +19,193 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
-  const prefilledCode = params.get("code")?.replace(/[^A-Za-z0-9]/g, "").slice(0, 6).toUpperCase() || "";
+
+  const prefilledCode =
+    params.get("code")?.replace(/[^A-Za-z0-9]/g, "").slice(0, 6).toUpperCase() || "";
+
+  const [activeMode, setActiveMode] = useState<"qa" | "quiz">("quiz");
   const [gameCode, setGameCode] = useState(prefilledCode);
   const [nickname, setNickname] = useState("");
 
   const { connected, lastMessage, emit } = useGameWebSocket();
 
   const QA_CLIENT_ID_KEY = "quizblast_qa_client_id";
-  const [qaClientId, setQaClientId] = useState<string>("");
+  const [qaClientId, setQaClientId] = useState("");
   const [qaInput, setQaInput] = useState("");
   const [qaItems, setQaItems] = useState<HomeQAItem[]>([]);
   const [showQaModal, setShowQaModal] = useState(false);
 
+  // CLIENT ID INIT
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const existing = window.sessionStorage.getItem(QA_CLIENT_ID_KEY);
+
+    const existing = sessionStorage.getItem(QA_CLIENT_ID_KEY);
     if (existing) {
       setQaClientId(existing);
       return;
     }
-    const generated = `anon-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36).slice(-4)}`;
-    window.sessionStorage.setItem(QA_CLIENT_ID_KEY, generated);
+
+    const generated = `anon-${Math.random().toString(36).slice(2, 10)}`;
+    sessionStorage.setItem(QA_CLIENT_ID_KEY, generated);
     setQaClientId(generated);
   }, []);
 
+  // JOIN QA SOCKET
   useEffect(() => {
     if (!connected || !qaClientId) return;
     emit("qa_client_join", { clientId: qaClientId });
   }, [connected, qaClientId, emit]);
 
+  // SOCKET HANDLER
   useEffect(() => {
     if (!lastMessage) return;
+
     const { type, payload } = lastMessage;
 
-    switch (type) {
-      case "global_live_questions_list": {
-        const questions = Array.isArray(payload?.questions) ? payload.questions : [];
-        setQaItems(
-          questions
-            .map((q: any) => ({
-              id: String(q.id),
-              text: String(q.text),
-              answer: q.answer === null || q.answer === undefined ? null : String(q.answer),
-              answeredBy: q.answeredBy === null || q.answeredBy === undefined ? null : String(q.answeredBy),
-              askedAt: Number(q.askedAt),
-              answeredAt: q.answeredAt === null || q.answeredAt === undefined ? null : Number(q.answeredAt),
-              isPublic: Boolean(q.isPublic),
-              mine: Boolean(q.mine),
-            }))
-            .sort((a: HomeQAItem, b: HomeQAItem) => a.askedAt - b.askedAt),
-        );
-        break;
-      }
-      case "global_new_question": {
-        const mine = Boolean((payload as any)?.mine);
-        const id = String((payload as any)?.id);
-        const next: HomeQAItem = {
-          id,
-          text: String((payload as any)?.text ?? ""),
-          answer: null,
-          answeredBy: null,
-          askedAt: Number((payload as any)?.askedAt ?? Date.now()),
-          answeredAt: null,
-          isPublic: false,
-          mine,
-        };
-        setQaItems((prev) => {
-          const exists = prev.some((x) => x.id === id);
-          if (exists) return prev.map((x) => (x.id === id ? { ...x, ...next } : x));
-          return [...prev, next].sort((a, b) => a.askedAt - b.askedAt);
-        });
-        break;
-      }
-      case "global_qa_answered_private": {
-        const id = String((payload as any)?.id);
-        const answered: HomeQAItem = {
-          id,
-          text: String((payload as any)?.text ?? ""),
-          answer: String((payload as any)?.answer ?? ""),
-          answeredBy: (payload as any)?.answeredBy ? String((payload as any).answeredBy) : null,
-          askedAt: Number((payload as any)?.askedAt ?? Date.now()),
-          answeredAt: Number((payload as any)?.answeredAt ?? Date.now()),
-          isPublic: false,
-          mine: true,
-        };
-        setQaItems((prev) => {
-          const exists = prev.some((x) => x.id === id);
-          if (exists) return prev.map((x) => (x.id === id ? { ...x, ...answered } : x));
-          return [...prev, answered].sort((a, b) => a.askedAt - b.askedAt);
-        });
-        break;
-      }
-      case "global_qa_published": {
-        const id = String((payload as any)?.id);
-        const answered: HomeQAItem = {
-          id,
-          text: String((payload as any)?.text ?? ""),
-          answer: String((payload as any)?.answer ?? ""),
-          answeredBy: (payload as any)?.answeredBy ? String((payload as any).answeredBy) : null,
-          askedAt: Number((payload as any)?.askedAt ?? Date.now()),
-          answeredAt: Number((payload as any)?.answeredAt ?? Date.now()),
-          isPublic: true,
-          mine: Boolean((payload as any)?.mine),
-        };
-        setQaItems((prev) => {
-          const exists = prev.some((x) => x.id === id);
-          if (exists) return prev.map((x) => (x.id === id ? { ...x, ...answered } : x));
-          return [...prev, answered].sort((a, b) => a.askedAt - b.askedAt);
-        });
-        break;
-      }
+    if (type === "global_live_questions_list") {
+      const questions = payload?.questions || [];
+
+      setQaItems(
+        questions.map((q: any) => ({
+          id: String(q.id),
+          text: String(q.text),
+          answer: q.answer ?? null,
+          answeredBy: q.answeredBy ?? null,
+          askedAt: Number(q.askedAt),
+          answeredAt: q.answeredAt ?? null,
+          isPublic: Boolean(q.isPublic),
+          mine: Boolean(q.mine),
+        }))
+      );
     }
   }, [lastMessage]);
 
-  const joinSession = () => {
+  // JOIN QUIZ
+  const handleJoin = (e: React.FormEvent) => {
+    e.preventDefault();
     if (!gameCode || !nickname) return;
 
     sessionStorage.setItem("quizblast_nickname", nickname);
-    setLocation(`/play/${gameCode.toUpperCase()}?tab=game`);
-  };
-
-  const handleJoin = (e: React.FormEvent) => {
-    e.preventDefault();
-    joinSession();
+    setLocation(`/play/${gameCode}?tab=game`);
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -top-24 left-[-8%] h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute bottom-[-5rem] right-[-4%] h-80 w-80 rounded-full bg-accent/10 blur-3xl" />
-      </div>
+    <div className="min-h-screen px-4 py-8">
+      <div className="max-w-6xl mx-auto grid gap-8 lg:grid-cols-2">
 
-      <div className="relative z-10 mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45 }}
-          className="order-2 lg:order-1"
-        >
-          <div className="inline-flex items-center rounded-2xl bg-white/80 px-4 py-3 shadow-sm border border-border">
-            <img
-              src={`${import.meta.env.BASE_URL}images/logo-dark.webp`}
-              alt="GoComet logo"
-              className="h-10 w-auto object-contain"
-            />
-          </div>
+        {/* LEFT SIDE */}
+        <div>
+          <h1 className="text-6xl font-black">GoComet Townhall</h1>
 
-          <h1 className="mt-5 text-5xl font-display font-black leading-tight text-foreground sm:text-6xl lg:text-7xl">
-            GoComet
-            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-[#0C214C] via-[#1A316C] to-[#0054FF]">
-              Townhall
-            </span>
-          </h1>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 max-w-xl">
-            <div className="rounded-2xl border border-border bg-white/80 px-4 py-3 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Live</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">Real-time sessions</p>
-            </div>
-            <div className="rounded-2xl border border-border bg-white/80 px-4 py-3 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Fast</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">Instant join & launch</p>
-            </div>
-          </div>
-
-          <Link href="/dashboard" className="mt-8 inline-block w-full md:w-auto">
-            <button className="w-full game-button brand-gradient text-white px-8 py-4 rounded-2xl text-lg font-black shadow-[0_8px_24px_rgba(0,84,255,0.25)] flex justify-center items-center gap-3">
-              <Presentation size={22} /> Open Host Console
+          <Link href="/dashboard">
+            <button className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-xl">
+              <Presentation /> Host Console
             </button>
           </Link>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.1 }}
-          className="order-1 lg:order-2"
-        >
-          <div className="glass-panel rounded-[28px] p-6 sm:p-8 relative overflow-hidden">
-            <div className="absolute inset-x-0 top-0 h-1.5 brand-gradient" />
-            <div className="mb-6">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Join a live session</p>
-              <h2 className="mt-2 text-3xl font-display font-black text-foreground">Enter your game PIN</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Use the PIN shared by the host to enter the GoComet quiz room.</p>
-            </div>
+        {/* RIGHT PANEL */}
+        <div className="bg-white p-6 rounded-3xl shadow">
 
-            <div className="mb-5 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Live Q&A</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">Ask questions anonymously during the presentation.</p>
-            </div>
+          {/* TOGGLE */}
+          <div className="flex gap-3 mb-6">
+            <button
+              onClick={() => setActiveMode("qa")}
+              className={`flex-1 p-4 rounded-xl ${activeMode === "qa" ? "bg-blue-600 text-white" : "bg-gray-100"}`}
+            >
+              <MessageCircle /> Q&A
+            </button>
 
-            <div className="mb-5">
-              <button
-                onClick={() => setShowQaModal(true)}
-                className="w-full bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-[0_4px_12px_rgba(0,84,255,0.25)] hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-              >
-                <MessageCircle size={18} />
-                Open Live Q&A
-              </button>
-            </div>
+            <button
+              onClick={() => setActiveMode("quiz")}
+              className={`flex-1 p-4 rounded-xl ${activeMode === "quiz" ? "bg-blue-600 text-white" : "bg-gray-100"}`}
+            >
+              <Play /> Quiz
+            </button>
+          </div>
 
+          {/* QA MODE */}
+          {activeMode === "qa" && (
+            <button
+              onClick={() => setShowQaModal(true)}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl"
+            >
+              Open Q&A
+            </button>
+          )}
+
+          {/* QUIZ MODE */}
+          {activeMode === "quiz" && (
             <form onSubmit={handleJoin} className="space-y-4">
               <input
-                type="text"
                 placeholder="Game PIN"
                 value={gameCode}
-                onChange={(e) => setGameCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase())}
-                className="w-full rounded-2xl border border-border bg-white px-5 py-4 text-center text-3xl font-display font-black tracking-[0.35em] uppercase text-foreground shadow-sm focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 placeholder:text-muted-foreground/60"
+                onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                className="w-full p-4 border rounded-xl text-center text-2xl"
               />
+
               <input
-                type="text"
-                placeholder="Your name"
+                placeholder="Your Name"
                 value={nickname}
-                onChange={(e) => setNickname(e.target.value.slice(0, 15))}
-                className="w-full rounded-2xl border border-border bg-white px-5 py-4 text-lg font-semibold text-foreground shadow-sm focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 placeholder:text-muted-foreground/60"
+                onChange={(e) => setNickname(e.target.value)}
+                className="w-full p-4 border rounded-xl"
               />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="submit"
-                  disabled={!gameCode || !nickname}
-                  className="w-full game-button brand-gradient py-4 rounded-2xl text-lg font-black text-white shadow-[0_8px_24px_rgba(0,84,255,0.24)] disabled:opacity-50 mt-2 flex justify-center items-center gap-2"
-                >
-                  <Play fill="currentColor" size={18} /> Join Session
-                </button>
-              </div>
+
+              <button
+                disabled={!gameCode || !nickname}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl"
+              >
+                Join
+              </button>
             </form>
-          </div>
-        </motion.div>
+          )}
+        </div>
       </div>
 
-      {/* Q&A Modal */}
+      {/* Q&A MODAL */}
       <AnimatePresence>
         {showQaModal && (
-          <>
+          <div className="fixed inset-0 flex items-center justify-center bg-black/50">
+
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-40"
-              onClick={() => setShowQaModal(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 400 }}
-              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:transform md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-lg md:max-h-[80vh] bg-white rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-white p-6 rounded-3xl w-full max-w-md"
             >
-              {/* Modal Header */}
-              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-white">
-                <div className="flex items-center gap-3">
-                  <MessageCircle size={20} className="text-primary" />
-                  <div>
-                    <h2 className="text-lg font-display font-black text-foreground">Live Q&A</h2>
-                    <p className="text-xs text-muted-foreground">Ask questions anonymously</p>
+              <button onClick={() => setShowQaModal(false)}>
+                <X />
+              </button>
+
+              <div className="space-y-4 max-h-64 overflow-y-auto">
+                {qaItems.map((q) => (
+                  <div key={q.id}>
+                    <p>{q.text}</p>
+                    {q.answer && <p>{q.answer}</p>}
                   </div>
-                </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 mt-4">
+                <input
+                  value={qaInput}
+                  onChange={(e) => setQaInput(e.target.value)}
+                  className="flex-1 border p-2 rounded"
+                />
+
                 <button
-                  onClick={() => setShowQaModal(false)}
-                  className="text-muted-foreground hover:text-foreground p-2 rounded-lg hover:bg-muted transition-colors"
+                  onClick={() => {
+                    if (!qaInput) return;
+                    emit("ask_global_question", { text: qaInput });
+                    setQaInput("");
+                  }}
                 >
-                  <X size={18} />
+                  <Send />
                 </button>
               </div>
-
-              {/* Q&A Content */}
-              <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 min-h-0">
-                {qaItems.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
-                    <MessageCircle size={48} className="text-muted-foreground/20 mb-3" />
-                    <p className="font-bold text-muted-foreground">No questions yet</p>
-                    <p className="text-sm text-muted-foreground/70 mt-1">Be the first to ask a question!</p>
-                  </div>
-                ) : (
-                  [...qaItems].reverse().map((q) => (
-                    <div key={q.id} className={`rounded-2xl border p-4 ${q.isPublic ? "bg-green-50 border-green-200" : q.mine && q.answer ? "bg-blue-50 border-blue-200" : "bg-white border-border"}`}>
-                      <p className="text-sm font-semibold text-foreground mb-3">{q.text}</p>
-                      {q.answer ? (
-                        <div className={`border-t pt-3 ${q.isPublic ? "border-green-200" : "border-blue-200"}`}>
-                          <p className="text-xs font-bold uppercase tracking-wider mb-2">
-                            {q.isPublic ? "Public reply" : "Your private reply"}
-                          </p>
-                          <p className="text-sm text-foreground">{q.answer}</p>
-                          <p className="text-xs text-muted-foreground mt-1">by {q.answeredBy || "Host"}</p>
-                        </div>
-                      ) : q.mine ? (
-                        <div className="border-t pt-3 border-border">
-                          <p className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                            <Loader2 size={14} className="animate-spin" /> Waiting for host reply
-                          </p>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Input Section */}
-              <div className="p-6 border-t border-border bg-gray-50">
-                <p className="text-xs text-muted-foreground text-center mb-3">Your question is sent anonymously to the host(s).</p>
-                <div className="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                  <input
-                    type="text"
-                    placeholder="Ask a question..."
-                    value={qaInput}
-                    onChange={(e) => setQaInput(e.target.value.slice(0, 200))}
-                    onKeyDown={(e) => e.key === "Enter" && (() => {
-                      if (!qaInput.trim() || !connected) return;
-                      emit("ask_global_question", { text: qaInput });
-                      setQaInput("");
-                    })()}
-                    className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
-                  />
-                  <button
-                    onClick={() => {
-                      if (!qaInput.trim() || !connected) return;
-                      emit("ask_global_question", { text: qaInput });
-                      setQaInput("");
-                    }}
-                    disabled={!qaInput.trim() || !connected}
-                    className="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center disabled:opacity-40 transition-opacity shrink-0"
-                    title="Send"
-                  >
-                    <Send size={16} />
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground text-right mt-2">{qaInput.length}/200</p>
-                {!connected && (
-                  <p className="text-xs text-orange-600 text-center mt-2 flex items-center justify-center gap-2">
-                    <Loader2 size={14} className="animate-spin" /> Connecting to server...
-                  </p>
-                )}
-              </div>
             </motion.div>
-          </>
+
+          </div>
         )}
       </AnimatePresence>
     </div>
