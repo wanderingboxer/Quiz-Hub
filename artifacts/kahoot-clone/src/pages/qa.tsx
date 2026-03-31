@@ -119,7 +119,7 @@ export default function QA() {
           askedAt: number;
           answeredAt?: number | null;
           mine?: boolean;
-        }>;
+        }>);
         setQaItems(
           questions
             .map((question: any) => ({
@@ -196,6 +196,21 @@ export default function QA() {
           answeredAt: Date.now(),
         } : q));
         break;
+      }
+      case "error": {
+        console.error("QA: Server error", payload);
+        // Show specific error to user
+        const errorMessage = payload?.message || payload?.error || "Unknown server error";
+        setAuthError(`Q&A Error: ${errorMessage}`);
+        
+        // If it's an authentication error, redirect to dashboard
+        if (errorMessage?.toLowerCase().includes("unauthorized") || errorMessage?.toLowerCase().includes("access denied")) {
+          setTimeout(() => setLocation("/dashboard"), 3000);
+        }
+        break;
+      }
+      default: {
+        console.log("QA: Unknown message type", type);
       }
     }
   }, [lastMessage, showQaPanel, hasHostAccess]);
