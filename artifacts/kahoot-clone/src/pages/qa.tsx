@@ -113,7 +113,7 @@ export default function QA() {
               answeredAt: q.answeredAt ?? null,
               mine: Boolean(q.mine),
             }))
-            .sort((a, b) => a.askedAt - b.askedAt)
+            .sort((a: QAItem, b: QAItem) => a.askedAt - b.askedAt)
         );
         break;
       }
