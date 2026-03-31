@@ -150,7 +150,7 @@ export default function QA() {
           isPublic: false,
           askedAt: Number(payload.askedAt),
           answeredAt: null,
-          mine: Boolean(payload?.playerId === playerId),
+          mine: false, // Questions from players are never "mine" in host context
         };
         setQaItems(prev => prev.find(item => item.id === q.id) ? prev : [...prev, q]);
         if (!showQaPanel) setUnreadQa(n => n + 1);
