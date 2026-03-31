@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { MessageCircle, Send, Clock, CheckCircle2, LogOut, Shield } from "lucide-react";
+import { MessageCircle, Send, Clock, CheckCircle2, LogOut, Shield, Settings } from "lucide-react";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 import { LoadingSpinner } from "@/components/game-ui";
 
