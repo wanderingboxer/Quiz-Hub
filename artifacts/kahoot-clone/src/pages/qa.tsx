@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, Send, Settings, Users, Clock, CheckCircle2, X, LogOut, Shield } from "lucide-react";
+import { motion } from "framer-motion";
+import { MessageCircle, Send, Clock, CheckCircle2, LogOut, Shield } from "lucide-react";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 import { LoadingSpinner } from "@/components/game-ui";
 
@@ -25,10 +25,8 @@ export default function QA() {
 
   const [qaItems, setQaItems] = useState<QAItem[]>([]);
   const [qaAnswers, setQaAnswers] = useState<Record<string, string>>({});
-  const [showQaPanel, setShowQaPanel] = useState(true);
   const [unreadQa, setUnreadQa] = useState(0);
 
-  // Host access state
   const [hasHostAccess, setHasHostAccess] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [authError, setAuthError] = useState("");
@@ -41,36 +39,28 @@ export default function QA() {
       ? window.sessionStorage.getItem(HOST_ACCESS_STORAGE_KEY) || ""
       : "";
 
-  const getHostAccessHeaders = (overrideCode?: string) => {
-    const code = overrideCode ?? getStoredHostAccessCode();
+  const getHostAccessHeaders = () => {
+    const code = getStoredHostAccessCode();
     return code ? { "x-host-access-code": code } : undefined;
   };
 
-  // Check host access on mount
+  // ACCESS CHECK
   useEffect(() => {
     const checkAccess = async () => {
       try {
-        const storedCode = getStoredHostAccessCode();
-        const storedName = typeof window !== "undefined"
-          ? window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)
-          : null;
-        
-        console.log("QA: Checking access", { storedCode, storedName });
-
         const res = await fetch(apiUrl("/api/host-access/status"), {
           credentials: "include",
           headers: getHostAccessHeaders(),
         });
+
         const data = await res.json();
-        console.log("QA: Server response", data);
-        setHasHostAccess(Boolean(data.authenticated));
-        if (!data.authenticated) {
-          setAuthError("Host access required. Please login from dashboard.");
-          // Redirect to dashboard after a short delay
+        setHasHostAccess(Boolean(data?.authenticated));
+
+        if (!data?.authenticated) {
+          setAuthError("Host access required.");
           setTimeout(() => setLocation("/dashboard"), 2000);
         }
-      } catch (error) {
-        console.log("QA: Access check failed", error);
+      } catch {
         setAuthError("Could not verify host access.");
         setTimeout(() => setLocation("/dashboard"), 2000);
       } finally {
@@ -81,139 +71,113 @@ export default function QA() {
     checkAccess();
   }, [setLocation]);
 
-  // Initialize host WebSocket connection when authenticated
+  // SOCKET JOIN
   useEffect(() => {
     if (!hasHostAccess || !connected) return;
 
-    // Join as host to receive questions
-    const hostName = typeof window !== "undefined"
-      ? window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)?.trim() || "Host"
-      : "Host";
+    const hostName =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY) || "Host"
+        : "Host";
 
-    const accessKey = getStoredHostAccessCode();
-    
-    console.log("QA: Joining as host", { gameCode: "qa-room", accessKey, hostName });
-    emit("host_join", { gameCode: "qa-room", accessKey, hostName });
-    
-    // Request initial questions list
+    emit("host_join", {
+      gameCode: "qa-room",
+      accessKey: getStoredHostAccessCode(),
+      hostName,
+    });
+
     emit("get_live_questions", {});
-    
   }, [hasHostAccess, connected, emit]);
 
-  // SOCKET HANDLER - Always call this useEffect, no conditions
+  // SOCKET HANDLER
   useEffect(() => {
     if (!lastMessage || !hasHostAccess) return;
-    
+
     const { type, payload } = lastMessage;
-    console.log("QA: Received message", { type, payload });
 
     switch (type) {
       case "live_questions_list":
       case "global_live_questions_list": {
-        const questions = (Array.isArray(payload?.questions) ? payload.questions : []) as Array<{
-          id: string | number;
-          text: string;
-          answer?: string | null;
-          answeredBy?: string | null;
-          isPublic?: boolean;
-          askedAt: number;
-          answeredAt?: number | null;
-          mine?: boolean;
-        }>);
+        const questions = Array.isArray(payload?.questions) ? payload.questions : [];
+
         setQaItems(
           questions
-            .map((question: any) => ({
-              id: String(question.id),
-              text: String(question.text),
-              answer: question.answer ? String(question.answer) : null,
-              answeredBy: question.answeredBy ? String(question.answeredBy) : null,
-              isPublic: Boolean(question.isPublic),
-              askedAt: Number(question.askedAt),
-              answeredAt: question.answeredAt ? Number(question.answeredAt) : null,
-              mine: Boolean(question.mine),
+            .map((q: any) => ({
+              id: String(q.id),
+              text: String(q.text),
+              answer: q.answer ?? null,
+              answeredBy: q.answeredBy ?? null,
+              isPublic: Boolean(q.isPublic),
+              askedAt: Number(q.askedAt),
+              answeredAt: q.answeredAt ?? null,
+              mine: Boolean(q.mine),
             }))
-            .sort((a: QAItem, b: QAItem) => a.askedAt - b.askedAt),
+            .sort((a, b) => a.askedAt - b.askedAt)
         );
         break;
       }
+
       case "new_live_question":
       case "global_new_question": {
-        const q: QAItem = { 
-          id: String(payload.id), 
-          text: String(payload.text), 
-          answer: null, 
-          answeredBy: null, 
-          isPublic: false, 
-          askedAt: Number(payload.askedAt),
+        if (!payload) return;
+
+        const q: QAItem = {
+          id: String(payload?.id),
+          text: String(payload?.text),
+          answer: null,
+          answeredBy: null,
+          isPublic: false,
+          askedAt: Number(payload?.askedAt),
           answeredAt: null,
-          mine: Boolean(payload.mine),
+          mine: Boolean(payload?.mine),
         };
-        setQaItems(prev => prev.find(item => item.id === q.id) ? prev : [...prev, q]);
-        if (!showQaPanel) setUnreadQa(n => n + 1);
+
+        setQaItems((prev) =>
+          prev.find((item) => item.id === q.id) ? prev : [...prev, q]
+        );
+
+        setUnreadQa((n) => n + 1);
         break;
       }
-      case "global_qa_answered": {
-        const id = String(payload.id);
-        setQaItems(prev =>
+
+      case "global_qa_answered":
+      case "qa_answered": {
+        const id = String(payload?.id);
+
+        setQaItems((prev) =>
           prev.map((q) =>
             q.id === id
               ? {
                   ...q,
-                  answer: String(payload.answer),
-                  answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy,
-                  isPublic: false,
+                  answer: String(payload?.answer),
+                  answeredBy: payload?.answeredBy ?? q.answeredBy,
+                  isPublic: Boolean(payload?.isPublic),
                   answeredAt: Date.now(),
                 }
-              : q,
-          ),
+              : q
+          )
         );
         break;
       }
+
       case "global_qa_published": {
-        const id = String(payload.id);
-        setQaItems(prev =>
+        const id = String(payload?.id);
+
+        setQaItems((prev) =>
           prev.map((q) =>
             q.id === id
               ? {
                   ...q,
-                  answer: String(payload.answer),
-                  answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy,
                   isPublic: true,
                   answeredAt: Date.now(),
                 }
-              : q,
-          ),
+              : q
+          )
         );
         break;
       }
-      case "qa_answered": {
-        const id = String(payload.id);
-        setQaItems(prev => prev.map(q => q.id === id ? { 
-          ...q, 
-          answer: String(payload.answer), 
-          answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy, 
-          isPublic: Boolean(payload.isPublic),
-          answeredAt: Date.now(),
-        } : q));
-        break;
-      }
-      case "error": {
-        console.error("QA: Server error", payload);
-        // Show specific error to user
-        const errorMessage = payload?.message || payload?.error || "Unknown server error";
-        setAuthError(`Q&A Error: ${errorMessage}`);
-        
-        // If it's an authentication error, redirect to dashboard
-        if (errorMessage?.toLowerCase().includes("unauthorized") || errorMessage?.toLowerCase().includes("access denied")) {
-          setTimeout(() => setLocation("/dashboard"), 3000);
-        }
-        break;
-      }
-      default: {
-        console.log("QA: Unknown message type", type);
-      }
     }
-  }, [lastMessage, showQaPanel, hasHostAccess]);
+  }, [lastMessage, hasHostAccess]);
 
   const handleLogout = async () => {
     await fetch(apiUrl("/api/host-access/logout"), {
@@ -221,204 +185,84 @@ export default function QA() {
       credentials: "include",
     });
 
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(HOST_ACCESS_STORAGE_KEY);
-      window.sessionStorage.removeItem(HOST_DISPLAY_NAME_STORAGE_KEY);
-    }
+    sessionStorage.clear();
     setLocation("/dashboard");
   };
 
   const handleSendAnswer = (qId: string) => {
     const answer = (qaAnswers[qId] || "").trim();
     if (!answer) return;
-    
-    // Send answer to server
-    console.log("QA: Sending answer", { questionId: qId, answer });
+
     emit("answer_global_question", { questionId: qId, answer });
-    
-    // Update local state immediately for better UX
-    setQaItems(prev => prev.map(q => 
-      q.id === qId 
-        ? { 
-            ...q, 
-            answer, 
-            answeredBy: "Host", 
-            isPublic: false,
-            answeredAt: Date.now(),
-          } 
-        : q
-    ));
-    
-    setQaAnswers(prev => ({ ...prev, [qId]: "" }));
+
+    setQaItems((prev) =>
+      prev.map((q) =>
+        q.id === qId
+          ? { ...q, answer, answeredBy: "Host", answeredAt: Date.now() }
+          : q
+      )
+    );
+
+    setQaAnswers((prev) => ({ ...prev, [qId]: "" }));
   };
 
   const handlePublish = (qId: string) => {
-    const question = qaItems.find(q => q.id === qId);
-    if (!question || !question.answer) return;
-    
-    // Publish the question to make it public for everyone
-    console.log("QA: Publishing question", { questionId: qId });
     emit("publish_question", { questionId: qId });
-    
-    // Update local state
-    setQaItems(prev => prev.map(q => 
-      q.id === qId 
-        ? { ...q, isPublic: true } 
-        : q
-    ));
+
+    setQaItems((prev) =>
+      prev.map((q) => (q.id === qId ? { ...q, isPublic: true } : q))
+    );
   };
 
-  // Early returns must be after all hooks
-  if (typeof window === "undefined") return <LoadingSpinner message="Loading Q&A Management..." />;
   if (checkingAccess) return <LoadingSpinner message="Checking host access..." />;
+
   if (!hasHostAccess) {
     return (
-      <div className="min-h-screen bg-muted/40 px-4 flex items-center justify-center">
-        <div className="w-full max-w-md bg-white border border-border rounded-[28px] p-8 shadow-xl">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-5">
-            <Shield size={24} />
-          </div>
-          <h1 className="text-3xl font-display font-black text-foreground">Access Denied</h1>
-          <p className="mt-2 text-sm text-muted-foreground leading-6">
-            {authError || "Host access required. Please login from dashboard."}
-          </p>
-          <button
-            onClick={() => setLocation("/dashboard")}
-            className="w-full mt-6 game-button brand-gradient text-white px-5 py-3 rounded-xl font-bold"
-          >
-            Return to Dashboard
-          </button>
+      <div className="min-h-screen flex items-center justify-center">
+        <div>
+          <Shield />
+          <p>{authError}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="bg-white border-b border-border shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-sm font-bold text-primary">
-                <MessageCircle size={14} /> Q&A Management
-              </div>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2.5 rounded-xl border border-border text-sm font-bold text-foreground hover:bg-muted transition-colors flex items-center gap-2"
-              >
-                <LogOut size={16} /> Back to Dashboard
+    <div className="p-6">
+      <button onClick={handleLogout}>
+        <LogOut /> Dashboard
+      </button>
+
+      {qaItems.map((q) => (
+        <motion.div key={q.id}>
+          <p>{q.text}</p>
+
+          {q.answer ? (
+            <p>{q.answer}</p>
+          ) : (
+            <div>
+              <input
+                value={qaAnswers[q.id] || ""}
+                onChange={(e) =>
+                  setQaAnswers((prev) => ({
+                    ...prev,
+                    [q.id]: e.target.value,
+                  }))
+                }
+              />
+              <button onClick={() => handleSendAnswer(q.id)}>
+                <Send />
               </button>
             </div>
-          </div>
-        </div>
-      </header>
+          )}
 
-      {/* Main Content */}
-      <main className="flex-1 bg-muted/40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
-            {/* Q&A Panel */}
-            <div className="bg-white rounded-2xl border border-border shadow-lg">
-              <div className="flex items-center justify-between p-6 border-b border-border">
-                <div className="flex items-center gap-3">
-                  <MessageCircle size={24} className="text-primary" />
-                  <h2 className="text-2xl font-display font-black text-foreground">Live Q&A Inbox</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MessageCircle size={14} /> Q&A Management
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6">
-                {qaItems.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <MessageCircle size={48} className="text-muted-foreground/20 mb-4" />
-                    <h3 className="text-xl font-display font-bold text-muted-foreground mb-2">No questions yet</h3>
-                    <p className="text-sm text-muted-foreground">Questions will appear here when participants ask them.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {qaItems.map((q) => (
-                      <motion.div
-                        key={q.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`rounded-2xl border p-4 ${
-                          q.isPublic ? "bg-green-50 border-green-200" : 
-                          q.answer ? "bg-blue-50 border-blue-200" : 
-                          "bg-white border-border"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-foreground mb-2">{q.text}</p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <Clock size={12} />
-                              <span>{new Date(q.askedAt).toLocaleTimeString()}</span>
-                            </div>
-                          </div>
-                          {q.answer ? (
-                            <div className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                              q.isPublic ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
-                            }`}>
-                              {q.isPublic ? "Public Reply" : "Private Reply"}
-                            </div>
-                          ) : (
-                            <div className="px-2 py-1 rounded-lg bg-orange-100 text-orange-700 text-xs font-medium">
-                              Unanswered
-                            </div>
-                          )}
-                        </div>
-
-                        {q.answer && (
-                          <div className="border-t pt-3">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <p className="text-sm text-foreground mb-2">{q.answer}</p>
-                                <p className="text-xs text-muted-foreground">by {q.answeredBy || "Host"}</p>
-                              </div>
-                              {!q.isPublic && (
-                                <button
-                                  onClick={() => handlePublish(q.id)}
-                                  className="ml-4 px-3 py-2 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors flex items-center gap-2"
-                                >
-                                  <CheckCircle2 size={14} />
-                                  Make Public
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {!q.answer && (
-                          <div className="border-t pt-3">
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Type your answer..."
-                                value={qaAnswers[q.id] || ""}
-                                onChange={(e) => setQaAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                              />
-                              <button
-                                onClick={() => handleSendAnswer(q.id)}
-                                className="px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
-                              >
-                                <Send size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
+          {q.answer && !q.isPublic && (
+            <button onClick={() => handlePublish(q.id)}>
+              <CheckCircle2 /> Publish
+            </button>
+          )}
+        </motion.div>
+      ))}
     </div>
   );
 }
