@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { motion } from "framer-motion";
-import { MessageCircle, Play, Presentation, Send, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { MessageCircle, Play, Presentation, Send, Loader2, X } from "lucide-react";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 
 interface HomeQAItem {
@@ -29,6 +29,7 @@ export default function Home() {
   const [qaClientId, setQaClientId] = useState<string>("");
   const [qaInput, setQaInput] = useState("");
   const [qaItems, setQaItems] = useState<HomeQAItem[]>([]);
+  const [showQaModal, setShowQaModal] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -209,6 +210,16 @@ export default function Home() {
               <p className="mt-1 text-sm font-semibold text-foreground">Ask questions anonymously during the presentation.</p>
             </div>
 
+            <div className="mb-5">
+              <button
+                onClick={() => setShowQaModal(true)}
+                className="w-full bg-primary text-white px-6 py-3 rounded-2xl font-bold shadow-[0_4px_12px_rgba(0,84,255,0.25)] hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+              >
+                <MessageCircle size={18} />
+                Open Live Q&A
+              </button>
+            </div>
+
             <form onSubmit={handleJoin} className="space-y-4">
               <input
                 type="text"
@@ -234,37 +245,60 @@ export default function Home() {
                 </button>
               </div>
             </form>
+          </div>
+        </motion.div>
+      </div>
 
-            {/* Q&A (always available) */}
-            <div className="mt-6 rounded-3xl border border-border/70 bg-white/60 backdrop-blur-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageCircle size={18} className="text-primary" />
-                  <p className="font-bold text-sm text-foreground">Live Q&A</p>
+      {/* Q&A Modal */}
+      <AnimatePresence>
+        {showQaModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-40"
+              onClick={() => setShowQaModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 400 }}
+              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:transform md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-lg md:max-h-[80vh] bg-white rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-white">
+                <div className="flex items-center gap-3">
+                  <MessageCircle size={20} className="text-primary" />
+                  <div>
+                    <h2 className="text-lg font-display font-black text-foreground">Live Q&A</h2>
+                    <p className="text-xs text-muted-foreground">Ask questions anonymously</p>
+                  </div>
                 </div>
-                {!connected ? (
-                  <span className="text-xs text-muted-foreground flex items-center gap-2">
-                    <Loader2 size={14} className="animate-spin" /> Connecting
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Connected</span>
-                )}
+                <button
+                  onClick={() => setShowQaModal(false)}
+                  className="text-muted-foreground hover:text-foreground p-2 rounded-lg hover:bg-muted transition-colors"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              <div className="max-h-[220px] overflow-y-auto p-4 flex flex-col gap-3">
+              {/* Q&A Content */}
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 min-h-0">
                 {qaItems.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
-                    <MessageCircle size={44} className="text-muted-foreground/20 mb-2" />
+                  <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+                    <MessageCircle size={48} className="text-muted-foreground/20 mb-3" />
                     <p className="font-bold text-muted-foreground">No questions yet</p>
-                    <p className="text-sm text-muted-foreground/70 mt-1">Ask any time during the presentation.</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">Be the first to ask a question!</p>
                   </div>
                 ) : (
                   [...qaItems].reverse().map((q) => (
-                    <div key={q.id} className={`rounded-2xl border p-3 ${q.isPublic ? "bg-green-50 border-green-200" : q.mine && q.answer ? "bg-blue-50 border-blue-200" : "bg-white border-border"}`}>
-                      <p className="text-sm font-semibold text-foreground mb-2">{q.text}</p>
+                    <div key={q.id} className={`rounded-2xl border p-4 ${q.isPublic ? "bg-green-50 border-green-200" : q.mine && q.answer ? "bg-blue-50 border-blue-200" : "bg-white border-border"}`}>
+                      <p className="text-sm font-semibold text-foreground mb-3">{q.text}</p>
                       {q.answer ? (
                         <div className={`border-t pt-3 ${q.isPublic ? "border-green-200" : "border-blue-200"}`}>
-                          <p className="text-xs font-bold uppercase tracking-wider mb-1">
+                          <p className="text-xs font-bold uppercase tracking-wider mb-2">
                             {q.isPublic ? "Public reply" : "Your private reply"}
                           </p>
                           <p className="text-sm text-foreground">{q.answer}</p>
@@ -282,9 +316,10 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="p-4 border-t border-border bg-white">
-                <p className="text-xs text-muted-foreground text-center mb-2">Your question is sent anonymously to the host(s).</p>
-                <div className="flex items-center gap-2 bg-muted rounded-2xl px-4 py-3 border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+              {/* Input Section */}
+              <div className="p-6 border-t border-border bg-gray-50">
+                <p className="text-xs text-muted-foreground text-center mb-3">Your question is sent anonymously to the host(s).</p>
+                <div className="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                   <input
                     type="text"
                     placeholder="Ask a question..."
@@ -304,18 +339,23 @@ export default function Home() {
                       setQaInput("");
                     }}
                     disabled={!qaInput.trim() || !connected}
-                    className="w-9 h-9 bg-primary text-white rounded-xl flex items-center justify-center disabled:opacity-40 transition-opacity shrink-0"
+                    className="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center disabled:opacity-40 transition-opacity shrink-0"
                     title="Send"
                   >
-                    <Send size={15} />
+                    <Send size={16} />
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground text-right mt-1">{qaInput.length}/200</p>
+                <p className="text-xs text-muted-foreground text-right mt-2">{qaInput.length}/200</p>
+                {!connected && (
+                  <p className="text-xs text-orange-600 text-center mt-2 flex items-center justify-center gap-2">
+                    <Loader2 size={14} className="animate-spin" /> Connecting to server...
+                  </p>
+                )}
               </div>
-            </div>
-          </div>
-        </motion.div>
-      </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

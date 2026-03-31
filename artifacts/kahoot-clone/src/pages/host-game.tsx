@@ -310,14 +310,6 @@ export default function HostGame() {
                 </div>
               </div>
 
-              {/* QR */}
-              <div className="flex flex-col items-center gap-2 shrink-0">
-                <div className="bg-white p-3 rounded-2xl shadow-lg">
-                  <QRCodeSVG value={homeUrl} size={120} bgColor="#ffffff" fgColor="#1e1b4b" level="M" />
-                </div>
-                <p className="text-white/60 text-xs font-bold uppercase tracking-widest">Scan for Q&A</p>
-              </div>
-
               {/* Quiz Join (name required) */}
               <div className="flex flex-col items-center lg:items-start">
                 <p className="text-white/70 font-bold text-sm uppercase tracking-widest mb-1">Quiz join (name required):</p>

@@ -2,23 +2,11 @@ import { useEffect, useState, useRef } from "react";
 import { useRoute, useLocation, useSearch } from "wouter";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, XCircle, Home, Loader2, MessageCircle, Send, Trophy, Medal } from "lucide-react";
+import { CheckCircle2, XCircle, Home, Loader2, Trophy, Medal } from "lucide-react";
 import { AnswerGrid } from "@/components/game-ui";
 import confetti from "canvas-confetti";
 
 type PlayerState = "lobby" | "answering" | "waiting" | "result" | "between_questions" | "podium";
-type Tab = "game" | "qa";
-
-interface PlayerQAItem {
-  id: string;
-  text: string;
-  answer: string | null;
-  answeredBy: string | null;
-  askedAt: number;
-  answeredAt: number | null;
-  isPublic: boolean;
-  mine: boolean;
-}
 
 interface LeaderboardEntry {
   nickname: string;
@@ -31,7 +19,6 @@ export default function PlayerGame() {
   const [, setLocation] = useLocation();
   const search = useSearch();
   const gameCode = params?.gameCode || "";
-  const initialTab = new URLSearchParams(search).get("tab") === "qa" ? "qa" : "game";
 
   const [nickname, setNickname] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -41,7 +28,6 @@ export default function PlayerGame() {
 
   const { connected, lastMessage, emit } = useGameWebSocket();
   const [gameState, setGameState] = useState<PlayerState>("lobby");
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   const [currentOptions, setCurrentOptions] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -52,51 +38,10 @@ export default function PlayerGame() {
   const hasJoined = useRef(false);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Q&A state
-  const [qaInput, setQaInput] = useState("");
-  const [qaItems, setQaItems] = useState<PlayerQAItem[]>([]);
-  const [newQACount, setNewQACount] = useState(0);
-  const qaListRef = useRef<HTMLDivElement>(null);
-
-  const upsertQaItem = (item: PlayerQAItem) => {
-    setQaItems((prev) => {
-      const existing = prev.find((qa) => qa.id === item.id);
-
-      if (!existing) {
-        return [...prev, item].sort((a, b) => a.askedAt - b.askedAt);
-      }
-
-      return prev
-        .map((qa) =>
-          qa.id === item.id
-            ? {
-                ...qa,
-                ...item,
-                text: item.text || qa.text,
-                answer: item.answer ?? qa.answer,
-                askedAt: qa.askedAt || item.askedAt,
-                answeredBy: item.answeredBy ?? qa.answeredBy,
-                answeredAt: item.answeredAt ?? qa.answeredAt,
-                isPublic: qa.isPublic || item.isPublic,
-                mine: qa.mine || item.mine,
-              }
-            : qa,
-        )
-        .sort((a, b) => a.askedAt - b.askedAt);
-    });
-  };
-
   useEffect(() => {
-    // Quiz answers require a nickname; Q&A can be opened without name entry.
-    if (!nickname && activeTab !== "qa") setLocation("/");
-  }, [nickname, activeTab, setLocation]);
-
-  useEffect(() => {
-    if (nickname || activeTab !== "qa") return;
-    const anon = `Anonymous${Math.floor(Math.random() * 9000) + 1000}`;
-    sessionStorage.setItem("quizblast_nickname", anon);
-    setNickname(anon);
-  }, [nickname, activeTab]);
+    // Quiz answers require a nickname
+    if (!nickname) setLocation("/");
+  }, [nickname, setLocation]);
 
   useEffect(() => {
     if (connected && gameCode && nickname && !hasJoined.current) {
@@ -122,7 +67,6 @@ export default function PlayerGame() {
         setSelectedOption(null);
         setLastResult(null);
         setGameState("answering");
-        setActiveTab("game");
         break;
 
       case "score_update":
@@ -147,59 +91,8 @@ export default function PlayerGame() {
         if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
         setGameState("podium");
         break;
-
-      case "live_question_sent": {
-        upsertQaItem({
-          id: String(payload.id),
-          text: String(payload.text),
-          answer: null,
-          answeredBy: null,
-          askedAt: Number(payload.askedAt),
-          answeredAt: null,
-          isPublic: false,
-          mine: true,
-        });
-        setTimeout(() => qaListRef.current?.scrollTo({ top: qaListRef.current?.scrollHeight ?? 0, behavior: "smooth" }), 100);
-        break;
-      }
-
-      case "qa_answered": {
-        upsertQaItem({
-          id: String(payload.id),
-          text: String(payload.text ?? ""),
-          answer: String(payload.answer),
-          answeredBy: payload.answeredBy ? String(payload.answeredBy) : null,
-          askedAt: Number(payload.askedAt ?? Date.now()),
-          answeredAt: Number(payload.answeredAt ?? Date.now()),
-          isPublic: Boolean(payload.isPublic),
-          mine: true,
-        });
-        if (activeTab !== "qa") setNewQACount((n) => n + 1);
-        setTimeout(() => qaListRef.current?.scrollTo({ top: qaListRef.current?.scrollHeight ?? 0, behavior: "smooth" }), 100);
-        break;
-      }
-
-      case "qa_published": {
-        upsertQaItem({
-          id: String(payload.id),
-          text: String(payload.text),
-          answer: String(payload.answer),
-          answeredBy: payload.answeredBy ? String(payload.answeredBy) : null,
-          askedAt: Number(payload.askedAt ?? Date.now()),
-          answeredAt: Number(payload.answeredAt ?? Date.now()),
-          isPublic: true,
-          mine: false,
-        });
-        if (activeTab !== "qa") setNewQACount((n) => n + 1);
-        setTimeout(() => qaListRef.current?.scrollTo({ top: qaListRef.current?.scrollHeight ?? 0, behavior: "smooth" }), 100);
-        break;
-      }
     }
   }, [lastMessage]);
-
-  useEffect(() => {
-    if (activeTab === "qa") setNewQACount(0);
-  }, [activeTab]);
 
   const handleSelectOption = (index: number) => {
     if (selectedOption !== null || !playerId) return;
@@ -214,19 +107,7 @@ export default function PlayerGame() {
     }
   }, [gameState, lastResult]);
 
-  const handleSendQuestion = () => {
-    const text = qaInput.trim();
-    if (!text || !playerId) return;
-    emit("ask_question", { gameCode, text });
-    setQaInput("");
-  };
-
-  const visibleQAs = qaItems
-    .filter((qa) => qa.isPublic || qa.mine)
-    .sort((a, b) => a.askedAt - b.askedAt);
-  const hasMyPendingQa = visibleQAs.some((qa) => qa.mine && !qa.answer);
   const myRank = leaderboard.find((e) => e.nickname === nickname);
-  const showTabs = gameState !== "podium";
 
   return (
     <div className="fixed inset-0 flex flex-col font-sans overflow-hidden bg-background">
@@ -237,33 +118,8 @@ export default function PlayerGame() {
         <div className="font-bold text-sm text-foreground bg-muted px-3 py-1 rounded-full truncate max-w-[140px]">{nickname || "Anonymous"}</div>
       </header>
 
-      {/* Tab Bar (shown throughout the live session) */}
-      {showTabs && (
-        <div className="shrink-0 flex bg-white border-b border-border z-10">
-          <button
-            onClick={() => setActiveTab("game")}
-            className={`flex-1 py-2.5 text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${activeTab === "game" ? "text-primary border-b-2 border-primary" : "text-muted-foreground"}`}
-          >
-            <Trophy size={15} /> Game
-          </button>
-          <button
-            onClick={() => setActiveTab("qa")}
-            className={`flex-1 py-2.5 text-sm font-bold flex items-center justify-center gap-1.5 transition-colors relative ${activeTab === "qa" ? "text-primary border-b-2 border-primary" : "text-muted-foreground"}`}
-          >
-            <MessageCircle size={15} /> Q&A
-            {newQACount > 0 && (
-              <span className="absolute top-1.5 right-[calc(50%-22px)] bg-red-500 text-white text-xs font-black w-4 h-4 rounded-full flex items-center justify-center">
-                {newQACount}
-              </span>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* ─── GAME TAB ─── */}
-      <AnimatePresence mode="wait">
-        {(activeTab === "game" || gameState === "answering" || gameState === "podium") && (
-          <motion.div key="game-tab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* ─── GAME CONTENT ─── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
             {/* LOBBY */}
             {gameState === "lobby" && (
@@ -378,103 +234,11 @@ export default function PlayerGame() {
                 </button>
               </div>
             )}
-
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ─── Q&A TAB ─── */}
-      <AnimatePresence mode="wait">
-        {activeTab === "qa" && gameState !== "podium" && (
-          <motion.div key="qa-tab" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
-
-            {/* Q&As visible to this player */}
-            <div ref={qaListRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 min-h-0">
-              {visibleQAs.length === 0 && (
-                <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
-                  <MessageCircle size={52} className="text-muted-foreground/20 mb-4" />
-                  <p className="font-bold text-muted-foreground">Ask a question anonymously</p>
-                  <p className="text-sm text-muted-foreground/70 mt-1">You can ask before, during, or between questions, and the host can reply privately or publish for everyone</p>
-                </div>
-              )}
-
-              {visibleQAs.map((qa, idx) => (
-                <motion.div
-                  key={qa.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className={`border rounded-2xl overflow-hidden shadow-sm ${qa.isPublic ? "bg-green-50 border-green-200" : qa.mine && qa.answer ? "bg-blue-50 border-blue-200" : qa.mine ? "bg-primary/5 border-primary/20" : "bg-white border-border"}`}
-                >
-                  <div className="px-4 pt-4 pb-3">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Question</span>
-                      {qa.mine && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary/10 text-primary">Yours</span>}
-                      {qa.isPublic && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-green-100 text-green-700">Public</span>}
-                      {!qa.isPublic && qa.mine && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Private</span>}
-                    </div>
-                    <p className="font-semibold text-foreground text-sm">{qa.text}</p>
-                  </div>
-
-                  {qa.answer ? (
-                    <div className={`border-t px-4 pt-3 pb-4 ${qa.isPublic ? "bg-green-100/60 border-green-200" : "bg-blue-100/60 border-blue-200"}`}>
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <CheckCircle2 size={13} className={qa.isPublic ? "text-green-700" : "text-blue-700"} />
-                        <span className={`text-xs font-bold uppercase tracking-wider ${qa.isPublic ? "text-green-700" : "text-blue-700"}`}>
-                          {qa.isPublic ? "Public reply" : "Private reply"}
-                        </span>
-                        <span className="text-[11px] font-semibold text-muted-foreground">
-                          by {qa.answeredBy || "Host"}
-                        </span>
-                      </div>
-                      <p className="text-sm text-foreground">{qa.answer}</p>
-                    </div>
-                  ) : qa.mine ? (
-                    <div className="border-t border-primary/10 px-4 pt-3 pb-4 bg-primary/5">
-                      <div className="flex items-center gap-2 text-primary">
-                        <Loader2 size={14} className="animate-spin" />
-                        <span className="text-xs font-bold uppercase tracking-wider">Waiting for host reply</span>
-                      </div>
-                    </div>
-                  ) : null}
-                </motion.div>
-              ))}
-
-              {hasMyPendingQa && (
-                <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 text-center">
-                  <Loader2 size={18} className="animate-spin text-primary mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-primary">Your private question has been sent to the host.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Ask box */}
-            <div className="shrink-0 p-4 border-t border-border bg-white">
-              <p className="text-xs text-muted-foreground text-center mb-2 font-medium">Private replies are visible only to you unless the host publishes them</p>
-              <div className="flex items-center gap-2 bg-muted rounded-2xl px-4 py-3 border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                <input
-                  type="text"
-                  placeholder="Ask the host something..."
-                  value={qaInput}
-                  onChange={e => setQaInput(e.target.value.slice(0, 200))}
-                  onKeyDown={e => e.key === "Enter" && handleSendQuestion()}
-                  className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
-                />
-                <button
-                  onClick={handleSendQuestion}
-                  disabled={!qaInput.trim()}
-                  className="w-9 h-9 bg-primary text-white rounded-xl flex items-center justify-center disabled:opacity-40 transition-opacity shrink-0"
-                >
-                  <Send size={15} />
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground text-right mt-1">{qaInput.length}/200</p>
-            </div>
-
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      </div>
     </div>
   );
 }
