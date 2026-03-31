@@ -92,6 +92,7 @@ export default function QA() {
 
     const accessKey = getStoredHostAccessCode();
     
+    console.log("QA: Joining as host", { gameCode: "qa-room", accessKey, hostName });
     emit("host_join", { gameCode: "qa-room", accessKey, hostName });
     
     // Request initial questions list
@@ -104,6 +105,7 @@ export default function QA() {
     if (!lastMessage || !hasHostAccess) return;
     
     const { type, payload } = lastMessage;
+    console.log("QA: Received message", { type, payload });
 
     switch (type) {
       case "live_questions_list":
@@ -216,6 +218,7 @@ export default function QA() {
     if (!answer) return;
     
     // Send answer to server
+    console.log("QA: Sending answer", { questionId: qId, answer });
     emit("answer_global_question", { questionId: qId, answer });
     
     // Update local state immediately for better UX
@@ -239,6 +242,7 @@ export default function QA() {
     if (!question || !question.answer) return;
     
     // Publish the question to make it public for everyone
+    console.log("QA: Publishing question", { questionId: qId });
     emit("publish_question", { questionId: qId });
     
     // Update local state
