@@ -81,12 +81,15 @@ export default function QA() {
         ? window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY) || "Host"
         : "Host";
 
+    console.log("QA: Joining as host", { gameCode: "qa-room", accessKey: getStoredHostAccessCode(), hostName });
+    
     emit("host_join", {
       gameCode: "qa-room",
       accessKey: getStoredHostAccessCode(),
       hostName,
     });
 
+    console.log("QA: Requesting questions");
     emit("get_live_questions", {});
   }, [hasHostAccess, connected, emit]);
 
