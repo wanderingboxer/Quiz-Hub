@@ -210,7 +210,7 @@ export default function PlayerGame() {
     .sort((a, b) => a.askedAt - b.askedAt);
   const hasMyPendingQa = visibleQAs.some((qa) => qa.mine && !qa.answer);
   const myRank = leaderboard.find((e) => e.nickname === nickname);
-  const showTabs = gameState !== "answering" && gameState !== "podium";
+  const showTabs = gameState !== "podium";
 
   return (
     <div className="fixed inset-0 flex flex-col font-sans overflow-hidden bg-background">
@@ -221,7 +221,7 @@ export default function PlayerGame() {
         <div className="font-bold text-sm text-foreground bg-muted px-3 py-1 rounded-full truncate max-w-[140px]">{nickname}</div>
       </header>
 
-      {/* Tab Bar (shown except during answering/podium) */}
+      {/* Tab Bar (shown throughout the live session) */}
       {showTabs && (
         <div className="shrink-0 flex bg-white border-b border-border z-10">
           <button
@@ -369,7 +369,7 @@ export default function PlayerGame() {
 
       {/* ─── Q&A TAB ─── */}
       <AnimatePresence mode="wait">
-        {activeTab === "qa" && gameState !== "answering" && gameState !== "podium" && (
+        {activeTab === "qa" && gameState !== "podium" && (
           <motion.div key="qa-tab" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
 
             {/* Q&As visible to this player */}
@@ -378,7 +378,7 @@ export default function PlayerGame() {
                 <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
                   <MessageCircle size={52} className="text-muted-foreground/20 mb-4" />
                   <p className="font-bold text-muted-foreground">Ask a question anonymously</p>
-                  <p className="text-sm text-muted-foreground/70 mt-1">The host can reply privately to you or publish the answer for everyone</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1">You can ask before, during, or between questions, and the host can reply privately or publish for everyone</p>
                 </div>
               )}
 

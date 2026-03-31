@@ -27,6 +27,7 @@ import {
   publishLiveQuestion,
   getLiveQuestions,
 } from "../lib/gameManager";
+import { hasHostAccessFromCookieHeader } from "../middlewares/hostAccess";
 
 interface WsMessage {
   type: string;
@@ -38,7 +39,8 @@ export function setupWebSocket(server: Server): void {
 
   logger.info("WebSocket server initialized at /api/ws");
 
-  wss.on("connection", (ws: WebSocket) => {
+  wss.on("connection", (ws: WebSocket, request) => {
+    const hasAuthorizedHostAccess = hasHostAccessFromCookieHeader(request.headers.cookie);
     let currentGameCode: string | null = null;
     let currentPlayerId: number | null = null;
     let isHost = false;
@@ -55,6 +57,11 @@ export function setupWebSocket(server: Server): void {
       try {
         switch (msg.type) {
           case "host_join": {
+            if (!hasAuthorizedHostAccess) {
+              ws.send(JSON.stringify({ type: "error", payload: { message: "Host access required" } }));
+              return;
+            }
+
             const gameCode = String(msg.payload.gameCode).toUpperCase();
             const session = getGameSession(gameCode);
             if (!session) {

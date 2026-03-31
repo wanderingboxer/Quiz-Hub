@@ -7,8 +7,11 @@ import {
   setGameQuestions,
   getSessionPlayerCount,
 } from "../lib/gameManager";
+import { requireHostAccess } from "../middlewares/hostAccess";
 
 const router: IRouter = Router();
+
+router.use(requireHostAccess);
 
 function generateGameCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useListQuizzes, useCreateQuiz, useDeleteQuiz, useCreateGame } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListQuizzesQueryKey } from "@workspace/api-client-react";
-import { Play, Plus, Trash2, Edit3, Settings, AlertCircle, LayoutDashboard } from "lucide-react";
+import { Play, Plus, Trash2, Edit3, Settings, AlertCircle, LayoutDashboard, MessageCircle, LogOut, Shield } from "lucide-react";
 import { LoadingSpinner } from "@/components/game-ui";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -12,7 +12,49 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: quizzes, isLoading, error } = useListQuizzes();
+  const apiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
+  const [accessKey, setAccessKey] = useState("");
+  const [hasHostAccess, setHasHostAccess] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(true);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  const apiUrl = (path: string) => (apiOrigin ? `${apiOrigin}${path}` : path);
+
+  useEffect(() => {
+    let active = true;
+
+    const checkAccess = async () => {
+      try {
+        const response = await fetch(apiUrl("/api/host-access/status"), {
+          credentials: "include",
+        });
+        const data = await response.json();
+        if (active) {
+          setHasHostAccess(Boolean(data.authenticated));
+        }
+      } catch {
+        if (active) {
+          setAuthError("Could not verify host access right now.");
+        }
+      } finally {
+        if (active) {
+          setCheckingAccess(false);
+        }
+      }
+    };
+
+    checkAccess();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const { data: quizzes, isLoading, error } = useListQuizzes({
+    query: {
+      enabled: hasHostAccess,
+    },
+  });
   
   const createQuiz = useCreateQuiz({
     mutation: {
@@ -35,9 +77,6 @@ export default function Dashboard() {
 
   const createGame = useCreateGame({
     mutation: {
-      onSuccess: (data) => {
-        setLocation(`/host/${data.gameCode}`);
-      },
       onError: (err: any) => {
         toast({ title: "Failed to start game", description: err.message, variant: "destructive" });
       }
@@ -49,6 +88,102 @@ export default function Dashboard() {
       data: { title: "My Awesome Quiz", description: "A fun new quiz" }
     });
   };
+
+  const handleUnlockConsole = async () => {
+    const trimmedKey = accessKey.trim();
+    if (!trimmedKey) return;
+
+    setIsUnlocking(true);
+    setAuthError("");
+
+    try {
+      const response = await fetch(apiUrl("/api/host-access/login"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessKey: trimmedKey }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Invalid host access code");
+      }
+
+      setHasHostAccess(true);
+      setAccessKey("");
+      queryClient.invalidateQueries({ queryKey: getListQuizzesQueryKey() });
+      toast({ title: "Host console unlocked" });
+    } catch (err: any) {
+      setAuthError(err.message || "Invalid host access code");
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await fetch(apiUrl("/api/host-access/logout"), {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
+
+    setHasHostAccess(false);
+    setAccessKey("");
+    queryClient.removeQueries({ queryKey: getListQuizzesQueryKey() });
+    toast({ title: "Host access removed" });
+  };
+
+  const handleLaunchSession = (quizId: number, openQa = false) => {
+    createGame.mutate(
+      { data: { quizId } },
+      {
+        onSuccess: (data) => {
+          setLocation(openQa ? `/host/${data.gameCode}?panel=qa` : `/host/${data.gameCode}`);
+        },
+      },
+    );
+  };
+
+  if (checkingAccess) return <div className="min-h-screen pt-20"><LoadingSpinner message="Checking host access..." /></div>;
+
+  if (!hasHostAccess) {
+    return (
+      <div className="min-h-screen bg-muted/40 px-4 flex items-center justify-center">
+        <div className="w-full max-w-md bg-white border border-border rounded-[28px] p-8 shadow-xl">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-5">
+            <Shield size={24} />
+          </div>
+          <h1 className="text-3xl font-display font-black text-foreground">Host access required</h1>
+          <p className="mt-2 text-sm text-muted-foreground leading-6">
+            Only approved hosts can open the dashboard, launch the host console, and view private Q&A replies.
+          </p>
+
+          <div className="mt-6 space-y-3">
+            <input
+              type="password"
+              placeholder="Enter host access code"
+              value={accessKey}
+              onChange={(e) => setAccessKey(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleUnlockConsole()}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+            <button
+              onClick={handleUnlockConsole}
+              disabled={!accessKey.trim() || isUnlocking}
+              className="game-button w-full brand-gradient text-white px-5 py-3 rounded-xl font-bold disabled:opacity-50"
+            >
+              {isUnlocking ? "Checking..." : "Unlock host console"}
+            </button>
+          </div>
+
+          {(authError || error) && (
+            <div className="mt-4 bg-destructive/10 text-destructive p-3 rounded-xl text-sm flex items-center gap-2">
+              <AlertCircle size={16} /> {authError || "Failed to verify access."}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) return <div className="min-h-screen pt-20"><LoadingSpinner message="Loading your quizzes..." /></div>;
   if (error) return <div className="min-h-screen pt-20 flex justify-center"><div className="bg-destructive/10 text-destructive p-6 rounded-xl flex items-center gap-3"><AlertCircle /> Failed to load quizzes.</div></div>;
@@ -66,22 +201,42 @@ export default function Dashboard() {
               <span className="block text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Host console</span>
             </div>
           </Link>
-          <button
-            onClick={handleCreateNew}
-            disabled={createQuiz.isPending}
-            className="game-button brand-gradient text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-[0_8px_20px_rgba(0,84,255,0.2)]"
-          >
-            <Plus size={18} /> Create Quiz
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2.5 rounded-xl border border-border text-sm font-bold text-foreground hover:bg-muted transition-colors flex items-center gap-2"
+            >
+              <LogOut size={16} /> Sign out
+            </button>
+            <button
+              onClick={handleCreateNew}
+              disabled={createQuiz.isPending}
+              className="game-button brand-gradient text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-[0_8px_20px_rgba(0,84,255,0.2)]"
+            >
+              <Plus size={18} /> Create Quiz
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
-        <div className="rounded-[28px] brand-gradient text-white p-6 sm:p-8 shadow-[0_24px_60px_rgba(12,33,76,0.18)] mb-8">
-          <h1 className="text-4xl sm:text-5xl font-display font-black">Manage quizzes and live sessions</h1>
-          <p className="mt-3 max-w-2xl text-white/80 text-sm sm:text-base">
-            Create branded knowledge checks, launch live sessions, and keep team engagement aligned with the GoComet product experience.
-          </p>
+        <div className="grid gap-4 lg:grid-cols-[1.65fr_1fr] mb-8">
+          <div className="rounded-[28px] brand-gradient text-white p-6 sm:p-8 shadow-[0_24px_60px_rgba(12,33,76,0.18)]">
+            <h1 className="text-4xl sm:text-5xl font-display font-black">Manage quizzes and live sessions</h1>
+            <p className="mt-3 max-w-2xl text-white/80 text-sm sm:text-base">
+              Create branded knowledge checks, launch live sessions, and keep team engagement aligned with the GoComet product experience.
+            </p>
+          </div>
+
+          <div className="rounded-[28px] border border-primary/15 bg-white p-6 shadow-sm">
+            <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
+              <MessageCircle size={20} />
+            </div>
+            <h2 className="text-2xl font-display font-black text-foreground">Always-on Q&A</h2>
+            <p className="mt-2 text-sm text-muted-foreground leading-6">
+              Launch any session in Q&A mode from the dashboard and keep the inbox open before, during, or after the quiz.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-end justify-between mb-6">
@@ -113,7 +268,14 @@ export default function Dashboard() {
                   <span className="text-5xl font-display font-black text-white/25">{quiz.questionCount}Q</span>
                   <div className="absolute inset-0 bg-[#0C214C]/15 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                     <button
-                      onClick={() => createGame.mutate({ data: { quizId: quiz.id } })}
+                      onClick={() => handleLaunchSession(quiz.id, true)}
+                      className="game-button bg-white text-primary w-14 h-14 rounded-full flex items-center justify-center shadow-[0_8px_18px_rgba(12,33,76,0.2)] hover:-translate-y-1"
+                      title="Open Q&A Dashboard"
+                    >
+                      <MessageCircle size={20} />
+                    </button>
+                    <button
+                      onClick={() => handleLaunchSession(quiz.id)}
                       className="game-button bg-white text-primary w-14 h-14 rounded-full flex items-center justify-center shadow-[0_8px_18px_rgba(12,33,76,0.2)] hover:-translate-y-1"
                       title="Host Game"
                     >

@@ -48,18 +48,10 @@ export default function Home() {
             </span>
           </h1>
 
-          <p className="mt-5 max-w-2xl text-lg text-muted-foreground sm:text-xl">
-            A space for onboarding, training, live knowledge checks, and Q&amp;A — designed to feel aligned with the GoComet brand.
-          </p>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 max-w-xl">
             <div className="rounded-2xl border border-border bg-white/80 px-4 py-3 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Live</p>
               <p className="mt-1 text-sm font-semibold text-foreground">Real-time sessions</p>
-            </div>
-            <div className="rounded-2xl border border-border bg-white/80 px-4 py-3 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Private</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">1:1 host replies</p>
             </div>
             <div className="rounded-2xl border border-border bg-white/80 px-4 py-3 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Fast</p>

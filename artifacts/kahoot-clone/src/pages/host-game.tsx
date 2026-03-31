@@ -29,7 +29,7 @@ export default function HostGame() {
   const gameCode = params?.gameCode || "";
 
   const { connected, lastMessage, emit } = useGameWebSocket();
-  const { data: gameInfo, isLoading } = useGetGame(gameCode);
+  const { data: gameInfo, isLoading, error } = useGetGame(gameCode);
 
   const [gameState, setGameState] = useState<GameState>("lobby");
   const [players, setPlayers] = useState<Array<{ nickname: string; playerId: number }>>([]);
@@ -43,7 +43,7 @@ export default function HostGame() {
 
   const [qaItems, setQaItems] = useState<HostQA[]>([]);
   const [qaAnswers, setQaAnswers] = useState<Record<string, string>>({});
-  const [showQaPanel, setShowQaPanel] = useState(false);
+  const [showQaPanel, setShowQaPanel] = useState(() => new URLSearchParams(window.location.search).get("panel") === "qa");
   const [unreadQa, setUnreadQa] = useState(0);
   const [copied, setCopied] = useState(false);
 
@@ -130,6 +130,22 @@ export default function HostGame() {
   }, [gameState]);
 
   if (isLoading) return <LoadingSpinner message="Loading Game..." />;
+  if ((error as any)?.status === 401) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white border border-border rounded-3xl p-8 shadow-sm text-center">
+          <h2 className="text-2xl font-display font-black text-foreground">Host access required</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Only approved hosts can open this console and receive private Q&A messages.</p>
+          <button
+            onClick={() => setLocation("/dashboard")}
+            className="mt-5 game-button brand-gradient text-white px-5 py-3 rounded-xl font-bold"
+          >
+            Go to dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (!gameInfo) return <div>Game not found</div>;
 
   const handleStart = () => emit("start_game", { gameCode });
@@ -159,18 +175,16 @@ export default function HostGame() {
         {gameState === "leaderboard" && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-secondary z-0 pointer-events-none" />}
       </AnimatePresence>
 
-      {/* Q&A Floating Button (during game) */}
-      {(gameState === "question" || gameState === "leaderboard") && (
-        <button
-          onClick={() => setShowQaPanel(true)}
-          className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-white border border-border px-4 py-3 rounded-2xl font-bold text-foreground shadow-lg hover:bg-muted transition-all"
-        >
-          <MessageCircle size={18} className="text-primary" />
-          <span className="text-sm">Q&A</span>
-          {unreadQa > 0 && <span className="bg-red-500 text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">{unreadQa}</span>}
-          {unreadQa === 0 && unansweredQa > 0 && <span className="bg-yellow-400 text-black text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">{unansweredQa}</span>}
-        </button>
-      )}
+      {/* Q&A Floating Button (available anytime) */}
+      <button
+        onClick={() => setShowQaPanel(true)}
+        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-white border border-border px-4 py-3 rounded-2xl font-bold text-foreground shadow-lg hover:bg-muted transition-all"
+      >
+        <MessageCircle size={18} className="text-primary" />
+        <span className="text-sm">Q&A</span>
+        {unreadQa > 0 && <span className="bg-red-500 text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">{unreadQa}</span>}
+        {unreadQa === 0 && unansweredQa > 0 && <span className="bg-yellow-400 text-black text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">{unansweredQa}</span>}
+      </button>
 
       {/* ─── LOBBY ─── */}
       {gameState === "lobby" && (

@@ -12,8 +12,11 @@ import {
   UpdateQuestionParams,
   UpdateQuestionBody,
 } from "@workspace/api-zod";
+import { requireHostAccess } from "../middlewares/hostAccess";
 
 const router: IRouter = Router();
+
+router.use(requireHostAccess);
 
 router.get("/quizzes", async (req, res): Promise<void> => {
   const quizzes = await db
