@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useRoute, useLocation } from "wouter";
+import { useRoute, useLocation, useSearch } from "wouter";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, XCircle, Home, Loader2, MessageCircle, Send, Trophy, Medal } from "lucide-react";
@@ -13,6 +13,7 @@ interface PlayerQAItem {
   id: string;
   text: string;
   answer: string | null;
+  answeredBy: string | null;
   askedAt: number;
   answeredAt: number | null;
   isPublic: boolean;
@@ -28,14 +29,16 @@ interface LeaderboardEntry {
 export default function PlayerGame() {
   const [, params] = useRoute("/play/:gameCode");
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const gameCode = params?.gameCode || "";
+  const initialTab = new URLSearchParams(search).get("tab") === "qa" ? "qa" : "game";
 
   const nickname = sessionStorage.getItem("quizblast_nickname");
   const [playerId, setPlayerId] = useState<number | null>(null);
 
   const { connected, lastMessage, emit } = useGameWebSocket();
   const [gameState, setGameState] = useState<PlayerState>("lobby");
-  const [activeTab, setActiveTab] = useState<Tab>("game");
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   const [currentOptions, setCurrentOptions] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -69,6 +72,7 @@ export default function PlayerGame() {
                 text: item.text || qa.text,
                 answer: item.answer ?? qa.answer,
                 askedAt: qa.askedAt || item.askedAt,
+                answeredBy: item.answeredBy ?? qa.answeredBy,
                 answeredAt: item.answeredAt ?? qa.answeredAt,
                 isPublic: qa.isPublic || item.isPublic,
                 mine: qa.mine || item.mine,
@@ -138,6 +142,7 @@ export default function PlayerGame() {
           id: String(payload.id),
           text: String(payload.text),
           answer: null,
+          answeredBy: null,
           askedAt: Number(payload.askedAt),
           answeredAt: null,
           isPublic: false,
@@ -152,6 +157,7 @@ export default function PlayerGame() {
           id: String(payload.id),
           text: String(payload.text ?? ""),
           answer: String(payload.answer),
+          answeredBy: payload.answeredBy ? String(payload.answeredBy) : null,
           askedAt: Number(payload.askedAt ?? Date.now()),
           answeredAt: Number(payload.answeredAt ?? Date.now()),
           isPublic: Boolean(payload.isPublic),
@@ -167,6 +173,7 @@ export default function PlayerGame() {
           id: String(payload.id),
           text: String(payload.text),
           answer: String(payload.answer),
+          answeredBy: payload.answeredBy ? String(payload.answeredBy) : null,
           askedAt: Number(payload.askedAt ?? Date.now()),
           answeredAt: Number(payload.answeredAt ?? Date.now()),
           isPublic: true,
@@ -402,10 +409,13 @@ export default function PlayerGame() {
 
                   {qa.answer ? (
                     <div className={`border-t px-4 pt-3 pb-4 ${qa.isPublic ? "bg-green-100/60 border-green-200" : "bg-blue-100/60 border-blue-200"}`}>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <CheckCircle2 size={13} className={qa.isPublic ? "text-green-700" : "text-blue-700"} />
                         <span className={`text-xs font-bold uppercase tracking-wider ${qa.isPublic ? "text-green-700" : "text-blue-700"}`}>
-                          {qa.isPublic ? "Host replied publicly" : "Host replied privately"}
+                          {qa.isPublic ? "Public reply" : "Private reply"}
+                        </span>
+                        <span className="text-[11px] font-semibold text-muted-foreground">
+                          by {qa.answeredBy || "Host"}
                         </span>
                       </div>
                       <p className="text-sm text-foreground">{qa.answer}</p>

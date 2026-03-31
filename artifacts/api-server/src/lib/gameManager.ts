@@ -14,6 +14,7 @@ export interface LiveQuestion {
   playerId: number;
   text: string;
   answer: string | null;
+  answeredBy: string | null;
   answeredAt: number | null;
   askedAt: number;
   isPublic: boolean;
@@ -33,7 +34,7 @@ interface GameSession {
     points: number;
   }>;
   players: Map<number, Player>;
-  hostWs: WebSocket | null;
+  hostWss: Set<WebSocket>;
   questionTimer: ReturnType<typeof setTimeout> | null;
   questionStartTime: number;
   liveQuestions: LiveQuestion[];
@@ -53,7 +54,7 @@ export function createGameSession(gameCode: string, quizId: number): GameSession
     currentQuestionIndex: -1,
     questions: [],
     players: new Map(),
-    hostWs: null,
+    hostWss: new Set(),
     questionTimer: null,
     questionStartTime: 0,
     liveQuestions: [],
@@ -71,6 +72,7 @@ export function addLiveQuestion(gameCode: string, playerId: number, text: string
     playerId,
     text: text.slice(0, 300),
     answer: null,
+    answeredBy: null,
     answeredAt: null,
     askedAt: Date.now(),
     isPublic: false,
@@ -79,7 +81,7 @@ export function addLiveQuestion(gameCode: string, playerId: number, text: string
   return q;
 }
 
-export function answerLiveQuestion(gameCode: string, questionId: string, answer: string): LiveQuestion | null {
+export function answerLiveQuestion(gameCode: string, questionId: string, answer: string, answeredBy: string): LiveQuestion | null {
   const session = gameSessions.get(gameCode);
   if (!session) return null;
 
@@ -87,6 +89,7 @@ export function answerLiveQuestion(gameCode: string, questionId: string, answer:
   if (!q) return null;
 
   q.answer = answer.slice(0, 500);
+  q.answeredBy = answeredBy.trim().slice(0, 40) || "Host";
   q.answeredAt = Date.now();
   return q;
 }
@@ -130,7 +133,14 @@ export function addPlayerToSession(gameCode: string, playerId: number, nickname:
 export function setHostWs(gameCode: string, ws: WebSocket): void {
   const session = gameSessions.get(gameCode);
   if (session) {
-    session.hostWs = ws;
+    session.hostWss.add(ws);
+  }
+}
+
+export function removeHostWs(gameCode: string, ws: WebSocket): void {
+  const session = gameSessions.get(gameCode);
+  if (session) {
+    session.hostWss.delete(ws);
   }
 }
 
@@ -140,8 +150,15 @@ export function broadcast(gameCode: string, message: object, excludeWs?: WebSock
 
   const data = JSON.stringify(message);
 
-  if (session.hostWs && session.hostWs !== excludeWs && session.hostWs.readyState === WebSocket.OPEN) {
-    session.hostWs.send(data);
+  for (const hostWs of session.hostWss.values()) {
+    if (hostWs.readyState !== WebSocket.OPEN) {
+      session.hostWss.delete(hostWs);
+      continue;
+    }
+
+    if (hostWs !== excludeWs) {
+      hostWs.send(data);
+    }
   }
 
   for (const player of session.players.values()) {
@@ -165,9 +182,16 @@ export function broadcastToPlayers(gameCode: string, message: object): void {
 
 export function sendToHost(gameCode: string, message: object): void {
   const session = gameSessions.get(gameCode);
-  if (!session || !session.hostWs) return;
-  if (session.hostWs.readyState === WebSocket.OPEN) {
-    session.hostWs.send(JSON.stringify(message));
+  if (!session) return;
+
+  const data = JSON.stringify(message);
+  for (const hostWs of session.hostWss.values()) {
+    if (hostWs.readyState !== WebSocket.OPEN) {
+      session.hostWss.delete(hostWs);
+      continue;
+    }
+
+    hostWs.send(data);
   }
 }
 

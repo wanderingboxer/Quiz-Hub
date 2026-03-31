@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
-import { Play, Presentation } from "lucide-react";
+import { MessageCircle, Play, Presentation } from "lucide-react";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -11,12 +11,16 @@ export default function Home() {
   const [gameCode, setGameCode] = useState(prefilledCode);
   const [nickname, setNickname] = useState("");
 
+  const joinSession = (openQa = false) => {
+    if (!gameCode || !nickname) return;
+
+    sessionStorage.setItem("quizblast_nickname", nickname);
+    setLocation(openQa ? `/play/${gameCode.toUpperCase()}?tab=qa` : `/play/${gameCode.toUpperCase()}`);
+  };
+
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gameCode || !nickname) return;
-    
-    sessionStorage.setItem("quizblast_nickname", nickname);
-    setLocation(`/play/${gameCode.toUpperCase()}`);
+    joinSession(false);
   };
 
   return (
@@ -77,7 +81,12 @@ export default function Home() {
             <div className="mb-6">
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Join a live session</p>
               <h2 className="mt-2 text-3xl font-display font-black text-foreground">Enter your game PIN</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Use the PIN shared by the host to enter the GoComet quiz room.</p>
+              <p className="mt-2 text-sm text-muted-foreground">Use the PIN shared by the host to enter the GoComet quiz room or open the Q&A instantly.</p>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Always on</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">Players can ask the host questions before, during, and between quiz rounds.</p>
             </div>
 
             <form onSubmit={handleJoin} className="space-y-4">
@@ -97,13 +106,23 @@ export default function Home() {
                 className="w-full rounded-2xl border border-border bg-white px-5 py-4 text-lg font-semibold text-foreground shadow-sm focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 placeholder:text-muted-foreground/60"
                 required
               />
-              <button
-                type="submit"
-                disabled={!gameCode || !nickname}
-                className="w-full game-button brand-gradient py-4 rounded-2xl text-lg font-black text-white shadow-[0_8px_24px_rgba(0,84,255,0.24)] disabled:opacity-50 mt-2 flex justify-center items-center gap-2"
-              >
-                <Play fill="currentColor" size={18} /> Join Session
-              </button>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="submit"
+                  disabled={!gameCode || !nickname}
+                  className="w-full game-button brand-gradient py-4 rounded-2xl text-lg font-black text-white shadow-[0_8px_24px_rgba(0,84,255,0.24)] disabled:opacity-50 mt-2 flex justify-center items-center gap-2"
+                >
+                  <Play fill="currentColor" size={18} /> Join Session
+                </button>
+                <button
+                  type="button"
+                  onClick={() => joinSession(true)}
+                  disabled={!gameCode || !nickname}
+                  className="w-full mt-2 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 text-lg font-black text-primary disabled:opacity-50 flex justify-center items-center gap-2 hover:bg-primary/10 transition-colors"
+                >
+                  <MessageCircle size={18} /> Open Q&A
+                </button>
+              </div>
             </form>
           </div>
         </motion.div>

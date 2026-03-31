@@ -7,6 +7,7 @@ import {
   getGameSession,
   addPlayerToSession,
   setHostWs,
+  removeHostWs,
   broadcast,
   broadcastToPlayers,
   sendToHost,
@@ -27,7 +28,7 @@ import {
   publishLiveQuestion,
   getLiveQuestions,
 } from "../lib/gameManager";
-import { hasHostAccessFromCookieHeader } from "../middlewares/hostAccess";
+import { hasHostAccessFromCookieHeader, verifyHostAccessCode } from "../middlewares/hostAccess";
 
 interface WsMessage {
   type: string;
@@ -57,7 +58,10 @@ export function setupWebSocket(server: Server): void {
       try {
         switch (msg.type) {
           case "host_join": {
-            if (!hasAuthorizedHostAccess) {
+            const accessKey = String(msg.payload.accessKey ?? "");
+            const isAuthorizedHost = hasAuthorizedHostAccess || verifyHostAccessCode(accessKey);
+
+            if (!isAuthorizedHost) {
               ws.send(JSON.stringify({ type: "error", payload: { message: "Host access required" } }));
               return;
             }
@@ -74,6 +78,19 @@ export function setupWebSocket(server: Server): void {
             ws.send(JSON.stringify({
               type: "host_joined",
               payload: { gameCode, playerCount: getSessionPlayerCount(gameCode) },
+            }));
+            ws.send(JSON.stringify({
+              type: "live_questions_list",
+              payload: {
+                questions: getLiveQuestions(gameCode).map((q) => ({
+                  id: q.id,
+                  text: q.text,
+                  answer: q.answer,
+                  answeredBy: q.answeredBy,
+                  isPublic: q.isPublic,
+                  askedAt: q.askedAt,
+                })),
+              },
             }));
             logger.info({ gameCode }, "Host connected to game");
             break;
@@ -280,9 +297,10 @@ export function setupWebSocket(server: Server): void {
 
             const questionId = String(msg.payload.questionId || "");
             const answerText = String(msg.payload.answer || "").trim();
+            const hostName = String(msg.payload.hostName || "").trim().slice(0, 40) || "Host";
             if (!questionId || !answerText) return;
 
-            const answered = answerLiveQuestion(currentGameCode, questionId, answerText);
+            const answered = answerLiveQuestion(currentGameCode, questionId, answerText, hostName);
             if (!answered) return;
 
             // Tell the host and the original player privately — don't broadcast to everyone yet
@@ -292,6 +310,7 @@ export function setupWebSocket(server: Server): void {
                 id: answered.id,
                 text: answered.text,
                 answer: answered.answer,
+                answeredBy: answered.answeredBy,
                 askedAt: answered.askedAt,
                 answeredAt: answered.answeredAt,
                 isPublic: false,
@@ -304,6 +323,7 @@ export function setupWebSocket(server: Server): void {
                 id: answered.id,
                 text: answered.text,
                 answer: answered.answer,
+                answeredBy: answered.answeredBy,
                 askedAt: answered.askedAt,
                 answeredAt: answered.answeredAt,
                 isPublic: false,
@@ -326,6 +346,7 @@ export function setupWebSocket(server: Server): void {
                 id: published.id,
                 text: published.text,
                 answer: published.answer,
+                answeredBy: published.answeredBy,
                 askedAt: published.askedAt,
                 answeredAt: published.answeredAt,
                 isPublic: true,
@@ -339,6 +360,7 @@ export function setupWebSocket(server: Server): void {
                 id: published.id,
                 text: published.text,
                 answer: published.answer,
+                answeredBy: published.answeredBy,
                 askedAt: published.askedAt,
                 answeredAt: published.answeredAt,
                 isPublic: true,
@@ -352,7 +374,16 @@ export function setupWebSocket(server: Server): void {
             const questions = getLiveQuestions(currentGameCode);
             ws.send(JSON.stringify({
               type: "live_questions_list",
-              payload: { questions: questions.map(q => ({ id: q.id, text: q.text, answer: q.answer, isPublic: q.isPublic, askedAt: q.askedAt })) },
+              payload: {
+                questions: questions.map((q) => ({
+                  id: q.id,
+                  text: q.text,
+                  answer: q.answer,
+                  answeredBy: q.answeredBy,
+                  isPublic: q.isPublic,
+                  askedAt: q.askedAt,
+                })),
+              },
             }));
             break;
           }
@@ -367,6 +398,10 @@ export function setupWebSocket(server: Server): void {
     });
 
     ws.on("close", () => {
+      if (currentGameCode && isHost) {
+        removeHostWs(currentGameCode, ws);
+      }
+
       if (currentGameCode && currentPlayerId && !isHost) {
         removePlayer(currentGameCode, currentPlayerId);
         const playerCount = getSessionPlayerCount(currentGameCode);

@@ -17,11 +17,15 @@ interface HostQA {
   id: string;
   text: string;
   answer: string | null;
+  answeredBy: string | null;
   isPublic: boolean;
   askedAt: number;
 }
 
 interface LeaderboardEntry { nickname: string; score: number; rank: number; }
+
+const HOST_ACCESS_STORAGE_KEY = "quizblast_host_access_code";
+const HOST_DISPLAY_NAME_STORAGE_KEY = "quizblast_host_display_name";
 
 export default function HostGame() {
   const [, params] = useRoute("/host/:gameCode");
@@ -43,6 +47,9 @@ export default function HostGame() {
 
   const [qaItems, setQaItems] = useState<HostQA[]>([]);
   const [qaAnswers, setQaAnswers] = useState<Record<string, string>>({});
+  const hostDisplayName = typeof window === "undefined"
+    ? "Host"
+    : window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)?.trim() || "Host";
   const [showQaPanel, setShowQaPanel] = useState(() => new URLSearchParams(window.location.search).get("panel") === "qa");
   const [unreadQa, setUnreadQa] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -57,7 +64,13 @@ export default function HostGame() {
   };
 
   useEffect(() => {
-    if (connected && gameCode) emit("host_join", { gameCode });
+    if (!connected || !gameCode) return;
+
+    const accessKey = typeof window === "undefined"
+      ? null
+      : window.sessionStorage.getItem(HOST_ACCESS_STORAGE_KEY)?.trim() || null;
+
+    emit("host_join", { gameCode, accessKey, hostName: hostDisplayName });
   }, [connected, gameCode, emit]);
 
   useEffect(() => {
@@ -89,15 +102,38 @@ export default function HostGame() {
       case "game_ended":
         setGameState("podium");
         break;
+      case "live_questions_list": {
+        const questions = (Array.isArray(payload.questions) ? payload.questions : []) as Array<{
+          id: string | number;
+          text: string;
+          answer?: string | null;
+          answeredBy?: string | null;
+          isPublic?: boolean;
+          askedAt: number;
+        }>;
+        setQaItems(
+          questions
+            .map((question) => ({
+              id: String(question.id),
+              text: String(question.text),
+              answer: question.answer ? String(question.answer) : null,
+              answeredBy: question.answeredBy ? String(question.answeredBy) : null,
+              isPublic: Boolean(question.isPublic),
+              askedAt: Number(question.askedAt),
+            }))
+            .sort((a: HostQA, b: HostQA) => a.askedAt - b.askedAt),
+        );
+        break;
+      }
       case "new_live_question": {
-        const q: HostQA = { id: String(payload.id), text: String(payload.text), answer: null, isPublic: false, askedAt: Number(payload.askedAt) };
-        setQaItems(prev => [...prev, q]);
+        const q: HostQA = { id: String(payload.id), text: String(payload.text), answer: null, answeredBy: null, isPublic: false, askedAt: Number(payload.askedAt) };
+        setQaItems(prev => prev.find(item => item.id === q.id) ? prev : [...prev, q]);
         if (!showQaPanel) setUnreadQa(n => n + 1);
         break;
       }
       case "qa_answered": {
         const id = String(payload.id);
-        setQaItems(prev => prev.map(q => q.id === id ? { ...q, answer: String(payload.answer), isPublic: Boolean(payload.isPublic) } : q));
+        setQaItems(prev => prev.map(q => q.id === id ? { ...q, answer: String(payload.answer), answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy, isPublic: Boolean(payload.isPublic) } : q));
         break;
       }
     }
@@ -155,7 +191,7 @@ export default function HostGame() {
   const handleSendAnswer = (qId: string) => {
     const answer = (qaAnswers[qId] || "").trim();
     if (!answer) return;
-    emit("answer_live_question", { gameCode, questionId: qId, answer });
+    emit("answer_live_question", { gameCode, questionId: qId, answer, hostName: hostDisplayName });
     setQaAnswers(prev => ({ ...prev, [qId]: "" }));
   };
 
@@ -386,14 +422,14 @@ export default function HostGame() {
                     {/* If answered privately */}
                     {q.answer && !q.isPublic && (
                       <div className="bg-white border border-blue-200 rounded-lg px-3 py-2">
-                        <p className="text-xs font-bold text-blue-600 mb-0.5">Your reply (private):</p>
+                        <p className="text-xs font-bold text-blue-600 mb-0.5">Private reply by {q.answeredBy || "Host"}:</p>
                         <p className="text-sm text-foreground">{q.answer}</p>
                       </div>
                     )}
                     {/* If published */}
                     {q.isPublic && q.answer && (
                       <div className="bg-white border border-green-200 rounded-lg px-3 py-2">
-                        <p className="text-xs font-bold text-green-700 mb-0.5 flex items-center gap-1"><Eye size={11} /> Public reply:</p>
+                        <p className="text-xs font-bold text-green-700 mb-0.5 flex items-center gap-1"><Eye size={11} /> Public reply by {q.answeredBy || "Host"}:</p>
                         <p className="text-sm text-foreground">{q.answer}</p>
                       </div>
                     )}

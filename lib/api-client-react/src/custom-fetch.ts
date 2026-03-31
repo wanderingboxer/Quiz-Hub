@@ -10,6 +10,7 @@ export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
+export const HOST_ACCESS_STORAGE_KEY = "quizblast_host_access_code";
 
 // ---------------------------------------------------------------------------
 // Module-level configuration
@@ -39,6 +40,17 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+function getStoredHostAccessCode(): string | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const storedValue = window.sessionStorage.getItem(HOST_ACCESS_STORAGE_KEY)?.trim();
+    return storedValue || null;
+  } catch {
+    return null;
+  }
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -344,6 +356,11 @@ export async function customFetch<T = unknown>(
 
   if (responseType === "json" && !headers.has("accept")) {
     headers.set("accept", DEFAULT_JSON_ACCEPT);
+  }
+
+  const hostAccessCode = !headers.has("x-host-access-code") ? getStoredHostAccessCode() : null;
+  if (hostAccessCode) {
+    headers.set("x-host-access-code", hostAccessCode);
   }
 
   // Attach bearer token when an auth getter is configured and no

@@ -29,8 +29,23 @@ export function verifyHostAccessCode(accessKey: string): boolean {
   return getAllowedHostCodes().includes(normalized);
 }
 
-export function hasHostAccess(req: Pick<Request, "signedCookies">): boolean {
-  return req.signedCookies?.[HOST_ACCESS_COOKIE] === "allowed";
+function getHostAccessCodeFromHeaders(headers?: Request["headers"]): string | null {
+  const headerValue = headers?.["x-host-access-code"];
+
+  if (Array.isArray(headerValue)) {
+    return headerValue[0]?.trim() || null;
+  }
+
+  return typeof headerValue === "string" && headerValue.trim() ? headerValue.trim() : null;
+}
+
+export function hasHostAccess(req: Pick<Request, "signedCookies" | "headers">): boolean {
+  if (req.signedCookies?.[HOST_ACCESS_COOKIE] === "allowed") {
+    return true;
+  }
+
+  const headerCode = getHostAccessCodeFromHeaders(req.headers);
+  return headerCode ? verifyHostAccessCode(headerCode) : false;
 }
 
 export function hasHostAccessFromCookieHeader(cookieHeader?: string): boolean {

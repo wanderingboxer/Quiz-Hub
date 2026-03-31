@@ -8,18 +8,27 @@ import { LoadingSpinner } from "@/components/game-ui";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
+const HOST_ACCESS_STORAGE_KEY = "quizblast_host_access_code";
+const HOST_DISPLAY_NAME_STORAGE_KEY = "quizblast_host_display_name";
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const apiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
   const [accessKey, setAccessKey] = useState("");
+  const [hostName, setHostName] = useState(() => (typeof window === "undefined" ? "" : window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)?.trim() || ""));
   const [hasHostAccess, setHasHostAccess] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [authError, setAuthError] = useState("");
 
   const apiUrl = (path: string) => (apiOrigin ? `${apiOrigin}${path}` : path);
+  const getStoredHostAccessCode = () => (typeof window === "undefined" ? "" : window.sessionStorage.getItem(HOST_ACCESS_STORAGE_KEY)?.trim() || "");
+  const getHostAccessHeaders = (overrideCode?: string) => {
+    const resolvedCode = overrideCode ?? getStoredHostAccessCode();
+    return resolvedCode ? { "x-host-access-code": resolvedCode } : undefined;
+  };
 
   useEffect(() => {
     let active = true;
@@ -28,6 +37,7 @@ export default function Dashboard() {
       try {
         const response = await fetch(apiUrl("/api/host-access/status"), {
           credentials: "include",
+          headers: getHostAccessHeaders(),
         });
         const data = await response.json();
         if (active) {
@@ -56,6 +66,16 @@ export default function Dashboard() {
       enabled: hasHostAccess,
     },
   });
+
+  useEffect(() => {
+    if ((error as any)?.status === 401) {
+      setHasHostAccess(false);
+      setAuthError("Please re-enter the host access code.");
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(HOST_ACCESS_STORAGE_KEY);
+      }
+    }
+  }, [error]);
   
   const createQuiz = useCreateQuiz({
     mutation: {
@@ -92,7 +112,8 @@ export default function Dashboard() {
 
   const handleUnlockConsole = async () => {
     const trimmedKey = accessKey.trim();
-    if (!trimmedKey) return;
+    const trimmedHostName = hostName.trim();
+    if (!trimmedKey || !trimmedHostName) return;
 
     setIsUnlocking(true);
     setAuthError("");
@@ -101,7 +122,10 @@ export default function Dashboard() {
       const response = await fetch(apiUrl("/api/host-access/login"), {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(getHostAccessHeaders(trimmedKey) ?? {}),
+        },
         body: JSON.stringify({ accessKey: trimmedKey }),
       });
 
@@ -110,6 +134,10 @@ export default function Dashboard() {
         throw new Error(data?.error || "Invalid host access code");
       }
 
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(HOST_ACCESS_STORAGE_KEY, trimmedKey);
+        window.sessionStorage.setItem(HOST_DISPLAY_NAME_STORAGE_KEY, trimmedHostName);
+      }
       setHasHostAccess(true);
       setAccessKey("");
       queryClient.invalidateQueries({ queryKey: getListQuizzesQueryKey() });
@@ -127,8 +155,13 @@ export default function Dashboard() {
       credentials: "include",
     }).catch(() => undefined);
 
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(HOST_ACCESS_STORAGE_KEY);
+      window.sessionStorage.removeItem(HOST_DISPLAY_NAME_STORAGE_KEY);
+    }
     setHasHostAccess(false);
     setAccessKey("");
+    setHostName("");
     queryClient.removeQueries({ queryKey: getListQuizzesQueryKey() });
     toast({ title: "Host access removed" });
   };
@@ -160,6 +193,14 @@ export default function Dashboard() {
 
           <div className="mt-6 space-y-3">
             <input
+              type="text"
+              placeholder="Your host name"
+              value={hostName}
+              onChange={(e) => setHostName(e.target.value.slice(0, 30))}
+              onKeyDown={(e) => e.key === "Enter" && handleUnlockConsole()}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+            <input
               type="password"
               placeholder="Enter host access code"
               value={accessKey}
@@ -169,7 +210,7 @@ export default function Dashboard() {
             />
             <button
               onClick={handleUnlockConsole}
-              disabled={!accessKey.trim() || isUnlocking}
+              disabled={!accessKey.trim() || !hostName.trim() || isUnlocking}
               className="game-button w-full brand-gradient text-white px-5 py-3 rounded-xl font-bold disabled:opacity-50"
             >
               {isUnlocking ? "Checking..." : "Unlock host console"}
@@ -203,6 +244,9 @@ export default function Dashboard() {
             </div>
           </Link>
           <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 rounded-xl bg-primary/5 px-3 py-2 text-sm font-bold text-primary">
+              <Shield size={14} /> {hostName.trim() || "Host"}
+            </div>
             <button
               onClick={handleLogout}
               className="px-4 py-2.5 rounded-xl border border-border text-sm font-bold text-foreground hover:bg-muted transition-colors flex items-center gap-2"
