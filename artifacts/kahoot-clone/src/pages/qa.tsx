@@ -88,26 +88,36 @@ export default function QA() {
     // Request initial questions list
     emit("get_live_questions", {});
     
-    // Add some demo questions for testing (remove in production)
+    // Add test questions to verify functionality (remove in production)
     setTimeout(() => {
       setQaItems([
         {
-          id: "demo-1",
-          text: "What is the purpose of this Q&A system?",
+          id: "test-1",
+          text: "How do I submit a question?",
           answer: null,
           answeredBy: null,
           isPublic: false,
-          askedAt: Date.now() - 5000,
+          askedAt: Date.now() - 3000,
           answeredAt: null,
           mine: false,
         },
         {
-          id: "demo-2", 
-          text: "How do I submit questions anonymously?",
-          answer: "You can submit questions through the main page by selecting Q&A mode and clicking the 'Open Live Q&A' button. All questions are anonymous by default.",
+          id: "test-2", 
+          text: "What happens when I make a question public?",
+          answer: "When you make a question public, all participants can see both the question and your answer.",
           answeredBy: "Host",
           isPublic: false,
-          askedAt: Date.now() - 10000,
+          askedAt: Date.now() - 6000,
+          answeredAt: Date.now() - 5000,
+          mine: false,
+        },
+        {
+          id: "test-3",
+          text: "Can I edit my answers?",
+          answer: "Yes, you can update your answers anytime before publishing them publicly.",
+          answeredBy: "Host",
+          isPublic: true,
+          askedAt: Date.now() - 9000,
           answeredAt: Date.now() - 8000,
           mine: false,
         }
@@ -324,14 +334,7 @@ export default function QA() {
                   <h2 className="text-2xl font-display font-black text-foreground">Live Q&A Inbox</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">
-                    {qaItems.filter(q => !q.answer).length} unanswered
-                  </span>
-                  {unreadQa > 0 && (
-                    <span className="bg-primary text-white text-xs px-2 py-1 rounded-full ml-2">
-                      {unreadQa} new
-                    </span>
-                  )}
+                  <MessageCircle size={14} /> Q&A Management
                 </div>
               </div>
 
@@ -378,8 +381,21 @@ export default function QA() {
 
                         {q.answer && (
                           <div className="border-t pt-3">
-                            <p className="text-sm text-foreground mb-2">{q.answer}</p>
-                            <p className="text-xs text-muted-foreground">by {q.answeredBy || "Host"}</p>
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <p className="text-sm text-foreground mb-2">{q.answer}</p>
+                                <p className="text-xs text-muted-foreground">by {q.answeredBy || "Host"}</p>
+                              </div>
+                              {!q.isPublic && (
+                                <button
+                                  onClick={() => handlePublish(q.id)}
+                                  className="ml-4 px-3 py-2 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors flex items-center gap-2"
+                                >
+                                  <CheckCircle2 size={14} />
+                                  Make Public
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -400,72 +416,12 @@ export default function QA() {
                                 <Send size={14} />
                               </button>
                             </div>
-                            <div className="flex gap-2 mt-2">
-                              <button
-                                onClick={() => handlePublish(q.id)}
-                                className="px-3 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors"
-                              >
-                                <CheckCircle2 size={14} />
-                                Make Public
-                              </button>
-                            </div>
                           </div>
                         )}
                       </motion.div>
                     ))}
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Stats Panel */}
-            <div className="space-y-6">
-              <div className="bg-white rounded-2xl border border-border p-6 shadow-lg">
-                <h3 className="text-lg font-display font-bold text-foreground mb-4">Q&A Statistics</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total Questions</span>
-                    <span className="text-lg font-bold text-foreground">{qaItems.length}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Answered</span>
-                    <span className="text-lg font-bold text-green-600">
-                      {qaItems.filter(q => q.answer).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Unanswered</span>
-                    <span className="text-lg font-bold text-orange-600">
-                      {qaItems.filter(q => !q.answer).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Public Replies</span>
-                    <span className="text-lg font-bold text-blue-600">
-                      {qaItems.filter(q => q.isPublic).length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl border border-border p-6 shadow-lg">
-                <h3 className="text-lg font-display font-bold text-foreground mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <button className="w-full px-4 py-3 rounded-xl border border-border text-foreground hover:bg-muted transition-colors text-left flex items-center gap-3">
-                    <Users size={16} />
-                    <div>
-                      <div className="font-medium">View All Participants</div>
-                      <div className="text-xs text-muted-foreground">Manage session attendees</div>
-                    </div>
-                  </button>
-                  <button className="w-full px-4 py-3 rounded-xl border border-border text-foreground hover:bg-muted transition-colors text-left flex items-center gap-3">
-                    <Settings size={16} />
-                    <div>
-                      <div className="font-medium">Q&A Settings</div>
-                      <div className="text-xs text-muted-foreground">Configure Q&A behavior</div>
-                    </div>
-                  </button>
-                </div>
               </div>
             </div>
           </div>

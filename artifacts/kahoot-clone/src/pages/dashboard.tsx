@@ -59,6 +59,20 @@ export default function Dashboard() {
   // ---------------- ACCESS CHECK ----------------
   useEffect(() => {
     const checkAccess = async () => {
+      // First check if we have stored credentials
+      const storedCode = getStoredHostAccessCode();
+      const storedName = typeof window !== "undefined" 
+        ? window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)
+        : null;
+      
+      // If we have stored credentials, set access immediately
+      if (storedCode && storedName) {
+        setHasHostAccess(true);
+        setCheckingAccess(false);
+        return;
+      }
+
+      // Otherwise, check with server
       try {
         const res = await fetch(apiUrl("/api/host-access/status"), {
           credentials: "include",
