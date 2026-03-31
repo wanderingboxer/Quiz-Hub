@@ -72,6 +72,50 @@ export default function QA() {
     checkAccess();
   }, [setLocation]);
 
+  // Initialize host WebSocket connection when authenticated
+  useEffect(() => {
+    if (!hasHostAccess || !connected) return;
+
+    // Join as host to receive questions
+    const hostName = typeof window !== "undefined"
+      ? window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)?.trim() || "Host"
+      : "Host";
+
+    const accessKey = getStoredHostAccessCode();
+    
+    emit("host_join", { gameCode: "qa-room", accessKey, hostName });
+    
+    // Request initial questions list
+    emit("get_live_questions", {});
+    
+    // Add some demo questions for testing (remove in production)
+    setTimeout(() => {
+      setQaItems([
+        {
+          id: "demo-1",
+          text: "What is the purpose of this Q&A system?",
+          answer: null,
+          answeredBy: null,
+          isPublic: false,
+          askedAt: Date.now() - 5000,
+          answeredAt: null,
+          mine: false,
+        },
+        {
+          id: "demo-2", 
+          text: "How do I submit questions anonymously?",
+          answer: "You can submit questions through the main page by selecting Q&A mode and clicking the 'Open Live Q&A' button. All questions are anonymous by default.",
+          answeredBy: "Host",
+          isPublic: false,
+          askedAt: Date.now() - 10000,
+          answeredAt: Date.now() - 8000,
+          mine: false,
+        }
+      ]);
+    }, 1000);
+    
+  }, [hasHostAccess, connected, emit]);
+
   const handleLogout = async () => {
     await fetch(apiUrl("/api/host-access/logout"), {
       method: "POST",
@@ -118,46 +162,7 @@ export default function QA() {
     const { type, payload } = lastMessage;
 
     switch (type) {
-      case "live_questions_list": {
-        const questions = (Array.isArray(payload?.questions) ? payload.questions : []) as Array<{
-          id: string | number;
-          text: string;
-          answer?: string | null;
-          answeredBy?: string | null;
-          isPublic?: boolean;
-          askedAt: number;
-        }>;
-        setQaItems(
-          questions
-            .map((question: any) => ({
-              id: String(question.id),
-              text: String(question.text),
-              answer: question.answer ? String(question.answer) : null,
-              answeredBy: question.answeredBy ? String(question.answeredBy) : null,
-              isPublic: Boolean(question.isPublic),
-              askedAt: Number(question.askedAt),
-              answeredAt: question.answeredAt ? Number(question.answeredAt) : null,
-              mine: Boolean(question.mine),
-            }))
-            .sort((a: QAItem, b: QAItem) => a.askedAt - b.askedAt),
-        );
-        break;
-      }
-      case "new_live_question": {
-        const q: QAItem = { 
-          id: String(payload.id), 
-          text: String(payload.text), 
-          answer: null, 
-          answeredBy: null, 
-          isPublic: false, 
-          askedAt: Number(payload.askedAt),
-          answeredAt: null,
-          mine: Boolean(payload.mine),
-        };
-        setQaItems(prev => prev.find(item => item.id === q.id) ? prev : [...prev, q]);
-        if (!showQaPanel) setUnreadQa(n => n + 1);
-        break;
-      }
+      case "live_questions_list":
       case "global_live_questions_list": {
         const questions = (Array.isArray(payload?.questions) ? payload.questions : []) as Array<{
           id: string | number;
@@ -166,6 +171,8 @@ export default function QA() {
           answeredBy?: string | null;
           isPublic?: boolean;
           askedAt: number;
+          answeredAt?: number | null;
+          mine?: boolean;
         }>;
         setQaItems(
           questions
@@ -183,6 +190,7 @@ export default function QA() {
         );
         break;
       }
+      case "new_live_question":
       case "global_new_question": {
         const q: QAItem = { 
           id: String(payload.id), 
@@ -208,6 +216,7 @@ export default function QA() {
                   answer: String(payload.answer),
                   answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy,
                   isPublic: false,
+                  answeredAt: Date.now(),
                 }
               : q,
           ),
@@ -224,6 +233,7 @@ export default function QA() {
                   answer: String(payload.answer),
                   answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy,
                   isPublic: true,
+                  answeredAt: Date.now(),
                 }
               : q,
           ),
@@ -232,7 +242,13 @@ export default function QA() {
       }
       case "qa_answered": {
         const id = String(payload.id);
-        setQaItems(prev => prev.map(q => q.id === id ? { ...q, answer: String(payload.answer), answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy, isPublic: Boolean(payload.isPublic) } : q));
+        setQaItems(prev => prev.map(q => q.id === id ? { 
+          ...q, 
+          answer: String(payload.answer), 
+          answeredBy: payload.answeredBy ? String(payload.answeredBy) : q.answeredBy, 
+          isPublic: Boolean(payload.isPublic),
+          answeredAt: Date.now(),
+        } : q));
         break;
       }
     }
@@ -242,18 +258,38 @@ export default function QA() {
     const answer = (qaAnswers[qId] || "").trim();
     if (!answer) return;
     
-    if (qId.startsWith("global-")) {
-      emit("answer_global_question", { questionId: qId });
-    } else {
-      emit("answer_question", { questionId: qId, answer });
-    }
+    // Send answer to server
+    emit("answer_global_question", { questionId: qId, answer });
+    
+    // Update local state immediately for better UX
+    setQaItems(prev => prev.map(q => 
+      q.id === qId 
+        ? { 
+            ...q, 
+            answer, 
+            answeredBy: "Host", 
+            isPublic: false,
+            answeredAt: Date.now(),
+          } 
+        : q
+    ));
     
     setQaAnswers(prev => ({ ...prev, [qId]: "" }));
   };
 
   const handlePublish = (qId: string) => {
+    const question = qaItems.find(q => q.id === qId);
+    if (!question || !question.answer) return;
+    
+    // Publish the question to make it public for everyone
     emit("publish_question", { questionId: qId });
-    setQaItems(prev => prev.map(q => q.id === qId ? { ...q, isPublic: true } : q));
+    
+    // Update local state
+    setQaItems(prev => prev.map(q => 
+      q.id === qId 
+        ? { ...q, isPublic: true } 
+        : q
+    ));
   };
 
   if (typeof window === "undefined") return <LoadingSpinner message="Loading Q&A Management..." />;
