@@ -251,37 +251,60 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] items-start">
-          {/* Left Column - Hero + Q&A Section */}
+          {/* Left Column - Stats */}
           <div>
             <div className="rounded-[28px] border border-primary/15 bg-white p-6 shadow-sm">
               <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
-                <MessageCircle size={20} />
+                <Settings size={20} />
               </div>
-              <h2 className="text-2xl font-display font-black text-foreground">Always-on Q&A</h2>
+              <h2 className="text-2xl font-display font-black text-foreground">Dashboard Overview</h2>
               <p className="mt-2 text-sm text-muted-foreground leading-6">
-                Launch any session in Q&A mode from the dashboard and keep the inbox open before, during, or after the quiz.
+                Manage your quizzes, host sessions, and monitor engagement analytics.
               </p>
             </div>
 
-            {/* Q&A Management Section */}
-            <div className="mt-12 rounded-[28px] border border-green-200 bg-green-50 p-8 shadow-lg">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-green-100 border-green-200 p-3 flex items-center justify-center">
-                  <MessageCircle size={24} className="text-green-600" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-display font-black text-foreground">Q&A Management</h3>
-                  <p className="text-sm text-muted-foreground">View and respond to questions from all your live sessions</p>
+            {/* Quick Stats */}
+            <div className="mt-8 space-y-4">
+              <div className="bg-white rounded-2xl border border-border p-6 shadow-lg">
+                <h3 className="text-lg font-display font-bold text-foreground mb-4">Quick Stats</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Total Quizzes</span>
+                    <span className="text-lg font-bold text-foreground">{quizzes?.length || 0}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Total Questions</span>
+                    <span className="text-lg font-bold text-foreground">
+                      {quizzes?.reduce((sum, quiz) => sum + quiz.questionCount, 0) || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Active Sessions</span>
+                    <span className="text-lg font-bold text-green-600">0</span>
+                  </div>
                 </div>
               </div>
 
-              <button
-                onClick={() => setLocation("/qa")}
-                className="game-button bg-primary text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-2 shadow-[0_8px_20px_rgba(0,84,255,0.2)] hover:bg-primary/90 transition-colors"
-              >
-                <Settings className="text-white" size={20} />
-                <span>Manage Q&A</span>
-              </button>
+              {/* Q&A Management */}
+              <div className="bg-white rounded-2xl border border-green-200 bg-green-50 p-6 shadow-lg">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-green-100 border-green-200 p-3 flex items-center justify-center">
+                    <MessageCircle size={24} className="text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-display font-black text-foreground">Q&A Management</h3>
+                    <p className="text-sm text-muted-foreground">View and respond to questions from all your live sessions</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setLocation("/qa")}
+                  className="w-full game-button bg-primary text-white px-8 py-4 rounded-2xl font-bold flex items-center gap-2 shadow-[0_8px_20px_rgba(0,84,255,0.2)] hover:bg-primary/90 transition-colors"
+                >
+                  <Settings className="text-white" size={20} />
+                  <span>Manage Q&A</span>
+                </button>
+              </div>
             </div>
           </div>
 

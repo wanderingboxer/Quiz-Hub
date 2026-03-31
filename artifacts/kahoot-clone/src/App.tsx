@@ -6,6 +6,7 @@ import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
+import QA from "@/pages/qa";
 import QuizEditor from "@/pages/quiz-editor";
 import HostGame from "@/pages/host-game";
 import PlayerGame from "@/pages/player-game";
@@ -25,6 +26,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/qa" component={QA} />
       <Route path="/quiz/:id/edit" component={QuizEditor} />
       <Route path="/host/:gameCode" component={HostGame} />
       <Route path="/play/:gameCode" component={PlayerGame} />
