@@ -412,6 +412,9 @@ export function setupWebSocket(server: Server): void {
           }
 
           case "player_join": {
+            // Prevent duplicate joins on the same socket.
+            if (currentPlayerId || currentGameCode) return;
+
             const gameCode = String(msg.payload.gameCode).toUpperCase();
             const nickname = String(msg.payload.nickname).trim().slice(0, 20);
 
@@ -626,9 +629,12 @@ export function setupWebSocket(server: Server): void {
             const question = session.questions[questionIndex];
             if (selectedOption < 0 || selectedOption >= question.options.length) return;
 
+            // Capture score synchronously before any async DB work — the player may disconnect
+            // during the await below, which would remove them from session and return undefined.
+            const finalScore = session.players.get(playerId)?.score ?? 0;
+
             const [game] = await db.select().from(gamesTable).where(eq(gamesTable.gameCode, gameCode));
             if (game) {
-              const finalScore = session.players.get(playerId)?.score ?? 0;
               await db.transaction(async (tx) => {
                 await tx.insert(answersTable).values({
                   gameId: game.id,
@@ -842,6 +848,11 @@ async function handleQuestionTimeout(gameCode: string): Promise<void> {
 }
 
 async function finalizeGame(gameCode: string): Promise<void> {
-  await db.update(gamesTable).set({ status: "finished" }).where(eq(gamesTable.gameCode, gameCode));
+  try {
+    await db.update(gamesTable).set({ status: "finished" }).where(eq(gamesTable.gameCode, gameCode));
+  } catch (err) {
+    logger.error({ err, gameCode }, "Failed to persist game finished status to DB");
+  }
+  // Always broadcast game_ended and clean up in-memory state, even if the DB write failed.
   endGame(gameCode);
 }
