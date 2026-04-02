@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useGetGame } from "@workspace/api-client-react";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, SkipForward, Trophy, Home,
   Copy, Check, Clock, Link2, Smartphone
 } from "lucide-react";
-import { CountdownBar, LoadingSpinner, AnswerGrid } from "@/components/game-ui";
+import { CountdownBar, AnswerGrid } from "@/components/game-ui";
 import confetti from "canvas-confetti";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -37,7 +36,6 @@ export default function HostGame() {
   const gameCode = params?.gameCode || "";
 
   const { connected, lastMessage, emit } = useGameWebSocket();
-  const { data: gameInfo, isLoading, error } = useGetGame(gameCode);
 
   const [gameState, setGameState] = useState<GameState>("lobby");
   const [players, setPlayers] = useState<Array<{ nickname: string; playerId: number }>>([]);
@@ -155,20 +153,7 @@ export default function HostGame() {
     frame();
   }, [gameState]);
 
-  // LOADING + ERRORS
-  if (isLoading) return <LoadingSpinner message="Loading Game..." />;
-
-  if ((error as any)?.status === 401) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <button onClick={() => setLocation("/dashboard")}>
-          Go to dashboard
-        </button>
-      </div>
-    );
-  }
-
-  if (!gameInfo) return <div>Game not found</div>;
+  if (!gameCode) return <div>Game not found</div>;
 
   // ACTIONS
   const handleStart = () => emit("start_game", { gameCode });

@@ -76,36 +76,25 @@ export default function Dashboard() {
       }
 
       // If no stored credentials, check with server or show login
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       try {
         const res = await fetch(apiUrl("/api/host-access/status"), {
           credentials: "include",
           headers: getHostAccessHeaders(),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
         const data = await res.json();
-        console.log("Dashboard: Final server check", data);
         setHasHostAccess(Boolean(data.authenticated));
       } catch {
-        setAuthError("Could not verify host access.");
+        setAuthError("Could not verify host access. Please enter your access code.");
       } finally {
         setCheckingAccess(false);
       }
     };
 
     checkAccess();
-    
-    // Also check session periodically
-    const interval = setInterval(() => {
-      const storedCode = getStoredHostAccessCode();
-      const storedName = typeof window !== "undefined" 
-        ? window.sessionStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)
-        : null;
-      
-      if (storedCode && storedName) {
-        setHasHostAccess(true);
-      }
-    }, 1000); // Check every second
-    
-    return () => clearInterval(interval);
   }, []); // Run on every mount to check session
 
   // ---------------- QUERIES ----------------
