@@ -1,9 +1,21 @@
 services:
   - type: web
+    name: quiz-hub-backend
+    env: node
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
+    startCommand: pnpm --filter @workspace/api-server run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  - type: web
     name: quiz-hub-frontend
     env: static
     buildCommand: pnpm install && pnpm --filter @workspace/kahoot-clone run build
     staticPublishPath: ./artifacts/kahoot-clone/dist/public
+    envVars:
+      - key: VITE_API_ORIGIN
+        value: https://quiz-hub-backend-y1u6.onrender.com
     routes:
       - type: rewrite
         source: /*
