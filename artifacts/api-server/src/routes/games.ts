@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { randomInt } from "crypto";
 import { eq, sql, desc } from "drizzle-orm";
 import { db, quizzesTable, questionsTable, gamesTable, playersTable, answersTable } from "@workspace/db";
 import { CreateGameBody, GetGameParams, GetGameResultsParams } from "@workspace/api-zod";
@@ -17,7 +18,7 @@ function generateGameCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[randomInt(chars.length)];
   }
   return code;
 }
