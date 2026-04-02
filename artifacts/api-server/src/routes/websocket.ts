@@ -5,6 +5,8 @@ import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import {
   getGameSession,
+  createGameSession,
+  setGameQuestions,
   addPlayerToSession,
   setHostWs,
   removeHostWs,
@@ -80,10 +82,36 @@ export function setupWebSocket(server: Server): void {
             }
 
             const gameCode = String(msg.payload.gameCode).toUpperCase();
-            const session = getGameSession(gameCode);
+            let session = getGameSession(gameCode);
             if (!session) {
-              ws.send(JSON.stringify({ type: "error", payload: { message: "Game not found" } }));
-              return;
+              // In-memory session missing — backend may have restarted. Try to re-hydrate from DB.
+              const [game] = await db
+                .select()
+                .from(gamesTable)
+                .where(eq(gamesTable.gameCode, gameCode));
+
+              if (!game || game.status === "finished") {
+                ws.send(JSON.stringify({ type: "error", payload: { message: "Game not found" } }));
+                return;
+              }
+
+              const questions = await db
+                .select()
+                .from(questionsTable)
+                .where(eq(questionsTable.quizId, game.quizId))
+                .orderBy(questionsTable.orderIndex);
+
+              createGameSession(gameCode, game.quizId);
+              setGameQuestions(gameCode, questions.map((q) => ({
+                id: q.id,
+                text: q.text,
+                options: q.options as string[],
+                correctOption: q.correctOption,
+                timeLimit: q.timeLimit,
+                points: q.points,
+              })));
+              session = getGameSession(gameCode)!;
+              logger.info({ gameCode }, "Re-hydrated game session from DB after restart");
             }
             currentGameCode = gameCode;
             isHost = true;
