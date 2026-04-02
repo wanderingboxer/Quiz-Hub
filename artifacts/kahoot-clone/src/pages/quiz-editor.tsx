@@ -6,7 +6,7 @@ import { z } from "zod";
 import { useGetQuiz, useUpdateQuiz, useAddQuestion, useUpdateQuestion, useDeleteQuestion } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetQuizQueryKey } from "@workspace/api-client-react";
-import { ArrowLeft, Save, Plus, Trash2, GripVertical, CheckCircle2, Clock, Trophy } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, CheckCircle2, Clock, Trophy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingSpinner } from "@/components/game-ui";
 import { ANSWER_COLORS, TIME_LIMITS, POINT_VALUES } from "@/lib/constants";
@@ -190,6 +190,11 @@ export default function QuizEditor() {
     };
   }, [selectedQuestion, watchedQuestion, isDirty, updateQuestion.isPending]);
 
+  useEffect(() => {
+    window.onbeforeunload = isDirty ? () => "You have unsaved changes." : null;
+    return () => { window.onbeforeunload = null; };
+  }, [isDirty]);
+
   const onSubmit = (data: QuestionFormValues) => {
     if (selectedQuestion) {
       const normalized = normalizeQuestionValues(data);
@@ -281,7 +286,6 @@ export default function QuizEditor() {
                     : "border-transparent hover:bg-muted"
                 )}
               >
-                <div className="text-muted-foreground mt-0.5"><GripVertical size={16} /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold text-muted-foreground mb-1">Question {idx + 1}</div>
                   <div className="text-sm font-semibold truncate">{q.text}</div>

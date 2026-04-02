@@ -53,25 +53,32 @@ router.post("/games", async (req, res): Promise<void> => {
     return;
   }
 
-  let gameCode = generateGameCode();
-  let attempts = 0;
-  while (attempts < 10) {
-    const existing = await db.select().from(gamesTable).where(eq(gamesTable.gameCode, gameCode));
-    if (existing.length === 0) break;
-    gameCode = generateGameCode();
-    attempts++;
+  let gameCode = "";
+  let game: typeof gamesTable.$inferSelect | null = null;
+
+  for (let i = 0; i < 10; i++) {
+    const code = generateGameCode();
+    try {
+      const [row] = await db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select({ id: gamesTable.id })
+          .from(gamesTable)
+          .where(eq(gamesTable.gameCode, code));
+        if (existing) throw new Error("COLLISION");
+        return tx.insert(gamesTable).values({ gameCode: code, quizId: parsed.data.quizId, status: "waiting" }).returning();
+      });
+      game = row;
+      gameCode = code;
+      break;
+    } catch (err: any) {
+      if (err.message !== "COLLISION") throw err;
+    }
   }
 
-  if (attempts >= 10) {
+  if (!game) {
     res.status(503).json({ error: "Could not generate a unique game code. Please try again." });
     return;
   }
-
-  const [game] = await db.insert(gamesTable).values({
-    gameCode,
-    quizId: parsed.data.quizId,
-    status: "waiting",
-  }).returning();
 
   const session = createGameSession(gameCode, parsed.data.quizId);
   setGameQuestions(gameCode, questions.map(q => ({

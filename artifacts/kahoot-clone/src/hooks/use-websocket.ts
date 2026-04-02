@@ -14,6 +14,7 @@ export function useGameWebSocket() {
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | undefined>(undefined);
+  const reconnectAttemptsRef = useRef(0);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -40,14 +41,17 @@ export function useGameWebSocket() {
       
       socket.onopen = () => {
         console.log("[WS] Connected");
+        reconnectAttemptsRef.current = 0;
         setConnected(true);
       };
 
       socket.onclose = () => {
         console.log("[WS] Disconnected");
         setConnected(false);
-        // Auto-reconnect after 2 seconds
-        reconnectTimeoutRef.current = window.setTimeout(connect, 2000);
+        const delay = Math.min(2000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+        console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1})`);
+        reconnectAttemptsRef.current += 1;
+        reconnectTimeoutRef.current = window.setTimeout(connect, delay);
       };
 
       socket.onmessage = (event) => {

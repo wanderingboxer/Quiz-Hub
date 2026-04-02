@@ -18,15 +18,6 @@ interface LeaderboardEntry {
   rank: number;
 }
 
-type HostQA = {
-  id: string;
-  text: string;
-  answer: string | null;
-  answeredBy: string | null;
-  isPublic: boolean;
-  askedAt: number;
-};
-
 const HOST_ACCESS_STORAGE_KEY = "quizblast_host_access_code";
 const HOST_DISPLAY_NAME_STORAGE_KEY = "quizblast_host_display_name";
 
@@ -48,11 +39,6 @@ export default function HostGame() {
   const [timer, setTimer] = useState(0);
 
   const [isTransitioning, setIsTransitioning] = useState(false);
-
-  // FIXED: Missing Q&A state
-  const [qaItems, setQaItems] = useState<HostQA[]>([]);
-  const [showQaPanel, setShowQaPanel] = useState(false);
-  const [unreadQa, setUnreadQa] = useState(0);
 
   const hostDisplayName =
     typeof window === "undefined"
@@ -145,10 +131,9 @@ export default function HostGame() {
 
       case "game_ended":
         setGameState("podium");
-        if (!showQaPanel) setUnreadQa((n) => n + 1);
         break;
     }
-  }, [lastMessage, showQaPanel]);
+  }, [lastMessage]);
 
   // TIMER
   useEffect(() => {

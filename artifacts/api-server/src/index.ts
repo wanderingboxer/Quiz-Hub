@@ -14,6 +14,10 @@ if (Number.isNaN(port) || port <= 0) {
 const server = http.createServer(app);
 setupWebSocket(server);
 
+app.get("/healthz", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
 server.listen(port, (err?: Error) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
@@ -22,3 +26,7 @@ server.listen(port, (err?: Error) => {
 
   logger.info({ port }, "Server listening");
 });
+
+const shutdown = () => server.close(() => process.exit(0));
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

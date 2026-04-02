@@ -36,6 +36,7 @@ export default function PlayerGame() {
   const [lastResult, setLastResult] = useState<{ isCorrect: boolean; points: number; score: number; rank: number } | null>(null);
   const [correctOptionIndex, setCorrectOptionIndex] = useState<number | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasJoined = useRef(false);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,7 +82,11 @@ export default function PlayerGame() {
 
       case "score_update":
         setLastResult({ isCorrect: payload.isCorrect, points: payload.pointsEarned, score: payload.score, rank: payload.rank });
-        setGameState("result");
+        setGameState(prev => prev === "waiting" || prev === "answering" ? "result" : prev);
+        break;
+
+      case "error":
+        setErrorMessage(payload?.message ?? "An error occurred");
         break;
 
       case "question_ended": {
@@ -135,6 +140,14 @@ export default function PlayerGame() {
         <div className="shrink-0 bg-red-500 text-white text-center text-xs py-1.5 px-4 flex items-center justify-center gap-2 z-30">
           <WifiOff size={13} />
           Connection lost — reconnecting...
+        </div>
+      )}
+
+      {/* Error banner */}
+      {errorMessage && (
+        <div className="shrink-0 bg-orange-500 text-white text-center text-xs py-1.5 px-4 flex items-center justify-center gap-2 z-30">
+          <span>{errorMessage}</span>
+          <button onClick={() => setErrorMessage(null)} className="ml-2 font-bold opacity-80 hover:opacity-100">✕</button>
         </div>
       )}
 

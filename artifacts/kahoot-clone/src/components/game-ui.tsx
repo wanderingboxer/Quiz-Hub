@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ANSWER_COLORS } from "@/lib/constants";
 import { clsx, type ClassValue } from "clsx";
@@ -56,6 +56,16 @@ export function AnswerGrid({
   correctOption?: number;
   showResults?: boolean;
 }) {
+  useEffect(() => {
+    if (!onSelect || disabled) return;
+    const handleKey = (e: KeyboardEvent) => {
+      const idx = ["1", "2", "3", "4"].indexOf(e.key);
+      if (idx !== -1 && idx < options.length) onSelect(idx);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onSelect, disabled, options.length]);
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full h-full max-h-[600px] min-h-[300px]">
       <AnimatePresence>
