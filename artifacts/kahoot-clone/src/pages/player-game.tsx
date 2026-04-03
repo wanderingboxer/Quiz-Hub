@@ -47,6 +47,7 @@ export default function PlayerGame() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasJoined = useRef(false);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevScoreRef = useRef(0);
 
   useEffect(() => {
     // Quiz answers require a nickname
@@ -81,6 +82,7 @@ export default function PlayerGame() {
 
       case "question_started":
         if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
+        prevScoreRef.current = lastResult?.score ?? prevScoreRef.current;
         setCurrentOptions(payload.question.options);
         setQuestionIndex(payload.questionIndex);
         setQuestionStartTime(Date.now());
@@ -110,7 +112,7 @@ export default function PlayerGame() {
             // score_update hasn't arrived yet — compute correctness from correctOption
             const isCorrect = selectedOption !== null && selectedOption === correctOpt;
             const myEntry = lb.find((e) => e.nickname === nickname);
-            return { isCorrect, points: 0, score: myEntry?.score ?? 0, rank: myEntry?.rank ?? 0 };
+            return { isCorrect, points: Math.max(0, (myEntry?.score ?? 0) - prevScoreRef.current), score: myEntry?.score ?? 0, rank: myEntry?.rank ?? 0 };
           });
           setGameState("result");
         }
