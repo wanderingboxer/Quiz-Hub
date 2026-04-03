@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "http";
 import { db, gamesTable, playersTable, answersTable, questionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import {
   getGameSession,
@@ -439,10 +439,55 @@ export function setupWebSocket(server: Server): void {
               return;
             }
 
-            const session = getGameSession(gameCode);
+            let session = getGameSession(gameCode);
             if (!session) {
-              ws.send(JSON.stringify({ type: "error", payload: { message: "Game not found" } }));
-              return;
+              // If this is a reconnect attempt, try to re-hydrate the session from DB
+              // (mirrors the host_join re-hydration path — backend may have restarted).
+              if (reconnectId !== null) {
+                const [game] = await db
+                  .select()
+                  .from(gamesTable)
+                  .where(eq(gamesTable.gameCode, gameCode));
+
+                if (game && game.status !== "finished") {
+                  const questions = await db
+                    .select()
+                    .from(questionsTable)
+                    .where(eq(questionsTable.quizId, game.quizId))
+                    .orderBy(questionsTable.orderIndex);
+
+                  createGameSession(gameCode, game.quizId);
+                  setGameQuestions(gameCode, questions.map((q) => ({
+                    id: q.id,
+                    text: q.text,
+                    options: q.options as string[],
+                    correctOption: q.correctOption,
+                    timeLimit: q.timeLimit,
+                    points: q.points,
+                  })));
+
+                  // Re-add this specific player from DB so the reconnect path can find them.
+                  const [dbPlayer] = await db
+                    .select()
+                    .from(playersTable)
+                    .where(and(eq(playersTable.id, reconnectId), eq(playersTable.gameId, game.id)));
+
+                  if (dbPlayer) {
+                    addPlayerToSession(gameCode, dbPlayer.id, dbPlayer.nickname, ws);
+                    const rehydratedSession = getGameSession(gameCode);
+                    const rehydratedPlayer = rehydratedSession?.players.get(dbPlayer.id);
+                    if (rehydratedPlayer) rehydratedPlayer.score = dbPlayer.score;
+                  }
+
+                  session = getGameSession(gameCode)!;
+                  logger.info({ gameCode, reconnectId }, "Re-hydrated game session from DB for player reconnect");
+                }
+              }
+
+              if (!session) {
+                ws.send(JSON.stringify({ type: "error", payload: { message: "Game not found" } }));
+                return;
+              }
             }
 
             if (session.status === "finished") {
