@@ -440,7 +440,7 @@ export function isAllAnswered(gameCode: string): boolean {
   if (!session) return false;
 
   for (const player of session.players.values()) {
-    if (!player.answeredCurrentQuestion) return false;
+    if (player.ws.readyState === WebSocket.OPEN && !player.answeredCurrentQuestion) return false;
   }
   return session.players.size > 0;
 }
