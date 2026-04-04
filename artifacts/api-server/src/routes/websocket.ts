@@ -964,14 +964,9 @@ export function setupWebSocket(server: Server): void {
         removeHostWs(currentGameCode, ws);
       }
 
-      if (currentGameCode && currentPlayerId && !isHost) {
-        removePlayer(currentGameCode, currentPlayerId);
-        const playerCount = getSessionPlayerCount(currentGameCode);
-        sendToHost(currentGameCode, {
-          type: "player_left",
-          payload: { playerId: currentPlayerId, playerCount },
-        });
-      }
+      // Player slot is intentionally kept in the session on disconnect so the
+      // reconnect path (player_join with stored playerId) can find and restore it.
+      // The slot is cleaned up when the game ends (endGame removes the session).
     });
 
     ws.on("error", (err) => {
