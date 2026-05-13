@@ -2,7 +2,7 @@ services:
   - type: web
     name: quiz-hub-backend
     env: node
-    buildCommand: pnpm install --ignore-scripts && pnpm rebuild && pnpm --filter @workspace/api-server run build
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
     startCommand: pnpm --filter @workspace/api-server run start
     healthCheckPath: /healthz
     envVars:
@@ -18,7 +18,7 @@ services:
   - type: web
     name: quiz-hub-frontend
     env: static
-    buildCommand: pnpm install --ignore-scripts && pnpm rebuild && pnpm --filter @workspace/kahoot-clone run build
+    buildCommand: pnpm install && pnpm --filter @workspace/kahoot-clone run build
     staticPublishPath: ./artifacts/kahoot-clone/dist/public
     envVars:
       # NOTE: Update this URL if the quiz-hub-backend service is renamed or redeployed.
