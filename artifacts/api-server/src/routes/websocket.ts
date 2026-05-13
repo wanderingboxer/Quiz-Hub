@@ -25,6 +25,7 @@ import {
   getLeaderboard,
   removePlayer,
   getSessionPlayerCount,
+  scheduleAnswerCountBroadcast,
   addLiveQuestion,
   answerLiveQuestion,
   publishLiveQuestion,
@@ -133,7 +134,7 @@ export function setupWebSocket(server: Server): void {
                 .where(eq(questionsTable.quizId, game.quizId))
                 .orderBy(questionsTable.orderIndex);
 
-              createGameSession(gameCode, game.quizId);
+              createGameSession(gameCode, game.quizId, game.id);
               setGameQuestions(gameCode, questions.map((q) => ({
                 id: q.id,
                 text: q.text,
@@ -456,7 +457,7 @@ export function setupWebSocket(server: Server): void {
                     .where(eq(questionsTable.quizId, game.quizId))
                     .orderBy(questionsTable.orderIndex);
 
-                  createGameSession(gameCode, game.quizId);
+                  createGameSession(gameCode, game.quizId, game.id);
                   setGameQuestions(gameCode, questions.map((q) => ({
                     id: q.id,
                     text: q.text,
@@ -738,37 +739,40 @@ export function setupWebSocket(server: Server): void {
             const questionIndex = Number(msg.payload.questionIndex);
             const selectedOption = Number(msg.payload.selectedOption);
             const timeToAnswer = Number(msg.payload.timeToAnswer);
-            // Reject NaN, non-integers, negatives — Number() gives us a typed number so TS is happy.
+            // Reject NaN, non-integers, negatives.
             if (
               !Number.isInteger(questionIndex) || questionIndex < 0 ||
               !Number.isInteger(selectedOption) || selectedOption < 0 ||
               !Number.isFinite(timeToAnswer) || timeToAnswer < 0
             ) return;
 
+            const preSession = getGameSession(gameCode);
+            if (!preSession) return;
+
+            // Reject answers for any question other than the current one — prevents score manipulation.
+            if (questionIndex !== preSession.currentQuestionIndex) return;
+
+            // Bounds-check both indices before touching state.
+            if (questionIndex >= preSession.questions.length) return;
+            const question = preSession.questions[questionIndex];
+            if (selectedOption >= question.options.length) return;
+
             // Capture original score before submitAnswer modifies it (needed for rollback on DB failure).
-            const originalScore = getGameSession(gameCode)?.players.get(playerId)?.score ?? 0;
+            const originalScore = preSession.players.get(playerId)?.score ?? 0;
 
             const result = submitAnswer(gameCode, playerId, questionIndex, selectedOption, timeToAnswer);
             if (!result) return;
 
-            const session = getGameSession(gameCode);
-            if (!session) return;
-
-            // Bounds-check both indices before using them.
-            if (questionIndex >= session.questions.length) return;
-            const question = session.questions[questionIndex];
-            if (selectedOption >= question.options.length) return;
-
             // Capture score synchronously before any async DB work — the player may disconnect
             // during the await below, which would remove them from session and return undefined.
-            const finalScore = session.players.get(playerId)?.score ?? 0;
+            const finalScore = preSession.players.get(playerId)?.score ?? 0;
 
-            const [game] = await db.select().from(gamesTable).where(eq(gamesTable.gameCode, gameCode));
-            if (game) {
+            // Use cached gameId — avoids one SELECT per answer submission under high load.
+            if (preSession.gameId) {
               try {
                 await db.transaction(async (tx) => {
                   await tx.insert(answersTable).values({
-                    gameId: game.id,
+                    gameId: preSession.gameId,
                     playerId,
                     questionId: question.id,
                     selectedOption,
@@ -787,27 +791,25 @@ export function setupWebSocket(server: Server): void {
               }
             }
 
+            const postSession = getGameSession(gameCode);
+            if (!postSession) break;
+
             const leaderboard = getLeaderboard(gameCode);
-            const playerRank = leaderboard.find(p => {
-              const player = session.players.get(playerId);
-              return player && p.nickname === player.nickname;
-            });
+            const playerNickname = postSession.players.get(playerId)?.nickname;
+            const playerRank = leaderboard.find(p => p.nickname === playerNickname);
 
             sendToPlayer(gameCode, playerId, {
               type: "score_update",
               payload: {
-                score: session.players.get(playerId)?.score ?? 0,
+                score: postSession.players.get(playerId)?.score ?? 0,
                 rank: playerRank?.rank ?? 0,
                 isCorrect: result.isCorrect,
                 pointsEarned: result.pointsEarned,
               },
             });
 
-            const { answeredCount, totalPlayers } = getAnsweredCount(gameCode);
-            broadcast(gameCode, {
-              type: "answer_submitted",
-              payload: { answeredCount, totalPlayers },
-            });
+            // Throttle answer_submitted broadcasts: coalesce bursts into one message per 150 ms.
+            scheduleAnswerCountBroadcast(gameCode);
 
             if (isAllAnswered(gameCode)) {
               endQuestion(gameCode);

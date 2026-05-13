@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -23,7 +23,9 @@ export const questionsTable = pgTable("questions", {
   timeLimit: integer("time_limit").notNull().default(20),
   points: integer("points").notNull().default(1000),
   orderIndex: integer("order_index").notNull().default(0),
-});
+}, (t) => [
+  index("questions_quiz_id_idx").on(t.quizId),
+]);
 
 export const insertQuestionSchema = createInsertSchema(questionsTable).omit({ id: true });
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;

@@ -81,7 +81,7 @@ router.post("/games", async (req, res): Promise<void> => {
     return;
   }
 
-  const session = createGameSession(gameCode, parsed.data.quizId);
+  const session = createGameSession(gameCode, parsed.data.quizId, game.id);
   setGameQuestions(gameCode, questions.map(q => ({
     id: q.id,
     text: q.text,
