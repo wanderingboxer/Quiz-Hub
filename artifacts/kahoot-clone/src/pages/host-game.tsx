@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useGameWebSocket } from "@/hooks/use-websocket";
 import { motion, AnimatePresence } from "framer-motion";
@@ -45,6 +45,7 @@ export default function HostGame() {
   const [timer, setTimer] = useState(0);
 
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const leaderboardTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const hostDisplayName =
     typeof window === "undefined"
@@ -132,7 +133,8 @@ export default function HostGame() {
         setCorrectOption(payload.correctOption);
         setLeaderboard(payload.leaderboard || []);
         setTimer(0);
-        setTimeout(() => setGameState("leaderboard"), 2500);
+        clearTimeout(leaderboardTimerRef.current);
+        leaderboardTimerRef.current = setTimeout(() => setGameState("leaderboard"), 2500);
         break;
 
       case "game_ended":
@@ -140,6 +142,9 @@ export default function HostGame() {
         break;
     }
   }, [lastMessage]);
+
+  // Cleanup leaderboard transition timer on unmount.
+  useEffect(() => () => clearTimeout(leaderboardTimerRef.current), []);
 
   // TIMER
   useEffect(() => {

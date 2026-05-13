@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { quizzesTable, questionsTable } from "./quizzes";
@@ -23,7 +23,9 @@ export const playersTable = pgTable("players", {
   score: integer("score").notNull().default(0),
   isConnected: integer("is_connected").notNull().default(1),
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("players_game_id_idx").on(t.gameId),
+]);
 
 export const insertPlayerSchema = createInsertSchema(playersTable).omit({ id: true, joinedAt: true });
 export type InsertPlayer = z.infer<typeof insertPlayerSchema>;
@@ -39,7 +41,11 @@ export const answersTable = pgTable("answers", {
   pointsEarned: integer("points_earned").notNull().default(0),
   timeToAnswer: integer("time_to_answer"),
   answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("answers_game_id_idx").on(t.gameId),
+  index("answers_player_id_idx").on(t.playerId),
+  index("answers_question_id_idx").on(t.questionId),
+]);
 
 export const insertAnswerSchema = createInsertSchema(answersTable).omit({ id: true, answeredAt: true });
 export type InsertAnswer = z.infer<typeof insertAnswerSchema>;

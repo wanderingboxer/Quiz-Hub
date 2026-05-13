@@ -34,6 +34,7 @@ export interface GlobalLiveQuestion {
 interface GameSession {
   gameCode: string;
   quizId: number;
+  gameId: number; // DB primary key — cached to avoid per-submit SELECT
   status: "waiting" | "active" | "finished";
   currentQuestionIndex: number;
   questions: Array<{
@@ -49,9 +50,30 @@ interface GameSession {
   questionTimer: ReturnType<typeof setTimeout> | null;
   questionStartTime: number;
   liveQuestions: LiveQuestion[];
+  questionEnding: boolean; // guard against double endQuestion calls
 }
 
 const gameSessions = new Map<string, GameSession>();
+
+// Throttle map for answer_submitted broadcasts: fire at most once per 150 ms per game.
+const answerBroadcastTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function scheduleAnswerCountBroadcast(gameCode: string): void {
+  if (answerBroadcastTimers.has(gameCode)) return;
+  answerBroadcastTimers.set(gameCode, setTimeout(() => {
+    answerBroadcastTimers.delete(gameCode);
+    const session = gameSessions.get(gameCode);
+    if (!session) return;
+    let answeredCount = 0;
+    for (const p of session.players.values()) {
+      if (p.answeredCurrentQuestion) answeredCount++;
+    }
+    broadcast(gameCode, {
+      type: "answer_submitted",
+      payload: { answeredCount, totalPlayers: session.players.size },
+    });
+  }, 150));
+}
 
 // Q&A that is not tied to a game PIN.
 // Hosts (with valid host access) receive these questions in real-time.
@@ -66,6 +88,23 @@ setInterval(() => {
     if (globalLiveQuestions[i].askedAt < cutoff) globalLiveQuestions.splice(i, 1);
   }
 }, 60 * 60 * 1000);
+
+// Evict game sessions that have been idle (no host, no active players) for over 2 hours.
+// This covers abandoned games where endGame() was never called.
+const SESSION_IDLE_EVICT_MS = 2 * 60 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [gameCode, session] of gameSessions) {
+    if (session.status === "finished") continue;
+    const hasOpenHost = Array.from(session.hostWss).some(ws => ws.readyState === 1 /* OPEN */);
+    const hasOpenPlayer = Array.from(session.players.values()).some(p => p.ws.readyState === 1);
+    if (!hasOpenHost && !hasOpenPlayer && now - session.questionStartTime > SESSION_IDLE_EVICT_MS) {
+      if (session.questionTimer) clearTimeout(session.questionTimer);
+      gameSessions.delete(gameCode);
+      logger.info({ gameCode }, "Evicted idle game session");
+    }
+  }
+}, 30 * 60 * 1000);
 
 export function addGlobalLiveQuestion(clientId: string, text: string): GlobalLiveQuestion | null {
   const trimmed = text.trim();
@@ -131,10 +170,11 @@ export function getGameSession(gameCode: string): GameSession | undefined {
   return gameSessions.get(gameCode);
 }
 
-export function createGameSession(gameCode: string, quizId: number): GameSession {
+export function createGameSession(gameCode: string, quizId: number, gameId = 0): GameSession {
   const session: GameSession = {
     gameCode,
     quizId,
+    gameId,
     status: "waiting",
     currentQuestionIndex: -1,
     questions: [],
@@ -143,14 +183,21 @@ export function createGameSession(gameCode: string, quizId: number): GameSession
     questionTimer: null,
     questionStartTime: 0,
     liveQuestions: [],
+    questionEnding: false,
   };
   gameSessions.set(gameCode, session);
   return session;
 }
 
+const MAX_QA_PER_PLAYER = 5;
+
 export function addLiveQuestion(gameCode: string, playerId: number, text: string): LiveQuestion | null {
   const session = gameSessions.get(gameCode);
   if (!session) return null;
+
+  // Limit unanswered questions per player to prevent Q&A spam.
+  const pending = session.liveQuestions.filter(q => q.playerId === playerId && !q.answer).length;
+  if (pending >= MAX_QA_PER_PLAYER) return null;
 
   const q: LiveQuestion = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -307,6 +354,7 @@ export function startQuestion(gameCode: string, onTimeout: (gameCode: string) =>
 
   session.currentQuestionIndex += 1;
   session.questionStartTime = Date.now();
+  session.questionEnding = false;
 
   for (const player of session.players.values()) {
     player.answeredCurrentQuestion = false;
@@ -389,10 +437,21 @@ export function getAnsweredCount(gameCode: string): { answeredCount: number; tot
 export function endQuestion(gameCode: string): void {
   const session = gameSessions.get(gameCode);
   if (!session || session.status !== "active") return;
+  // Guard: timer callback and isAllAnswered() can both fire in the same event-loop
+  // pass when the last answer arrives just as the timeout fires.
+  if (session.questionEnding) return;
+  session.questionEnding = true;
 
   if (session.questionTimer) {
     clearTimeout(session.questionTimer);
     session.questionTimer = null;
+  }
+
+  // Cancel any pending throttled answer_submitted broadcast for this question.
+  const pendingTimer = answerBroadcastTimers.get(gameCode);
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    answerBroadcastTimers.delete(gameCode);
   }
 
   const question = session.questions[session.currentQuestionIndex];
