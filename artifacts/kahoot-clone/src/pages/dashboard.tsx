@@ -42,11 +42,6 @@ export default function Dashboard() {
       : ""
   );
 
-  const [hasHostAccess, setHasHostAccess] = useState(false);
-  const [checkingAccess, setCheckingAccess] = useState(true);
-  const [isUnlocking, setIsUnlocking] = useState(false);
-  const [authError, setAuthError] = useState("");
-
   const getStoredHostAccessCode = () =>
     typeof window !== "undefined"
       ? window.localStorage.getItem(HOST_ACCESS_STORAGE_KEY) || ""
@@ -57,46 +52,55 @@ export default function Dashboard() {
     return code ? { "x-host-access-code": code } : undefined;
   };
 
+  // Resolve synchronously so the first render never shows the loading spinner
+  // for a user who is already authenticated via localStorage.
+  const [hasHostAccess, setHasHostAccess] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const code = window.localStorage.getItem(HOST_ACCESS_STORAGE_KEY) || "";
+    const name = window.localStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY) || "";
+    return Boolean(code && name);
+  });
+  // Only show the checking spinner when we genuinely don't know yet (no stored creds).
+  const [checkingAccess, setCheckingAccess] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const code = window.localStorage.getItem(HOST_ACCESS_STORAGE_KEY) || "";
+    const name = window.localStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY) || "";
+    return !(code && name);
+  });
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [authError, setAuthError] = useState("");
+
   // ---------------- ACCESS CHECK ----------------
   useEffect(() => {
-    const checkAccess = async () => {
-      // First check if we have stored credentials
-      const storedCode = getStoredHostAccessCode();
-      const storedName = typeof window !== "undefined"
-        ? window.localStorage.getItem(HOST_DISPLAY_NAME_STORAGE_KEY)
-        : null;
-      
-      console.log("Dashboard: Checking access", { storedCode, storedName });
-      
-      // If we have stored credentials, grant access immediately
-      if (storedCode && storedName) {
-        console.log("Dashboard: Found stored credentials, granting access");
-        setHasHostAccess(true);
-        setCheckingAccess(false);
-        return;
-      }
+    // Already resolved via localStorage on first render — skip the server round-trip.
+    if (!checkingAccess) return;
 
-      // If no stored credentials, check with server or show login
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      try {
-        const res = await fetch(apiUrl("/api/host-access/status"), {
-          credentials: "include",
-          headers: getHostAccessHeaders(),
-          signal: controller.signal,
-        });
+    // No stored credentials: ask the server (e.g. cookie-based session from another device).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    fetch(apiUrl("/api/host-access/status"), {
+      credentials: "include",
+      headers: getHostAccessHeaders(),
+      signal: controller.signal,
+    })
+      .then((res) => res.json())
+      .then((data) => {
         clearTimeout(timeoutId);
-        const data = await res.json();
         setHasHostAccess(Boolean(data.authenticated));
-      } catch {
+      })
+      .catch(() => {
         setAuthError("Could not verify host access. Please enter your access code.");
-      } finally {
+      })
+      .finally(() => {
         setCheckingAccess(false);
-      }
-    };
+      });
 
-    checkAccess();
-  }, []); // Run on every mount to check session
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------- QUERIES ----------------
   const { data: quizzes, error } = useListQuizzes({
