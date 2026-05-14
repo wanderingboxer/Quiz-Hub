@@ -2,8 +2,8 @@ services:
   - type: web
     name: quiz-hub-backend
     env: node
-    buildCommand: pnpm install && pnpm --filter @workspace/db run push && pnpm --filter @workspace/api-server run build
-    startCommand: pnpm --filter @workspace/api-server run start
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
+    startCommand: pnpm --filter @workspace/db run push-force && pnpm --filter @workspace/api-server run start
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
