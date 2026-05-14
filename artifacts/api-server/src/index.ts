@@ -2,6 +2,7 @@ import http from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { setupWebSocket } from "./routes/websocket";
+import { ensureSchema } from "@workspace/db";
 
 const rawPort = process.env["PORT"] ?? "3000";
 
@@ -24,14 +25,21 @@ app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-server.listen(port, (err?: Error) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
+// Ensure DB tables exist before accepting traffic.
+ensureSchema()
+  .then(() => {
+    server.listen(port, (err?: Error) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
+      logger.info({ port }, "Server listening");
+    });
+  })
+  .catch((err) => {
+    logger.error({ err }, "Failed to initialise database schema — check DATABASE_URL");
     process.exit(1);
-  }
-
-  logger.info({ port }, "Server listening");
-});
+  });
 
 const shutdown = () => server.close(() => process.exit(0));
 process.on("SIGTERM", shutdown);
