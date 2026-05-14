@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import path from "path";
@@ -53,6 +53,12 @@ const frontendDist = path.resolve(__dirname, "../../kahoot-clone/dist/public");
 app.use(express.static(frontendDist));
 app.use((_req, res) => {
   res.sendFile(path.join(frontendDist, "index.html"));
+});
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  logger.error({ err }, "Unhandled error");
+  res.status(500).json({ error: "Internal server error" });
 });
 
 export default app;
