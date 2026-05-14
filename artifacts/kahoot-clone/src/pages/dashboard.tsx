@@ -115,10 +115,10 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    if ((error as any)?.status === 401) {
+    const status = (error as any)?.status;
+    if (status === 401) {
       setHasHostAccess(false);
       setAuthError("Session expired. Please login again.");
-      // Don't automatically clear session - let user decide
     }
   }, [error]);
 
@@ -302,6 +302,13 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+
+        {error && (error as any)?.status !== 401 && (
+          <div className="mb-6 bg-destructive/10 text-destructive p-4 rounded-2xl text-sm flex items-center gap-2">
+            <AlertCircle size={16} />
+            <span>Failed to load quizzes. Please refresh the page. If the problem persists, the database may still be starting up.</span>
+          </div>
+        )}
 
         {quizzes?.length === 0 ? (
           <div className="bg-white border-2 border-dashed border-border rounded-3xl p-16 text-center flex flex-col items-center shadow-sm">
